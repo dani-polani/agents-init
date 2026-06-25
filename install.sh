@@ -26,8 +26,23 @@ download() {
 
 download AGENTS.md
 download CLAUDE.md
+download COPYRIGHT.md
 
 mv "$temporary_directory/AGENTS.md" ./AGENTS.md
 mv "$temporary_directory/CLAUDE.md" ./CLAUDE.md
+mv "$temporary_directory/COPYRIGHT.md" ./COPYRIGHT.md
 
-echo "Updated AGENTS.md and CLAUDE.md in $(pwd)."
+echo "Updated AGENTS.md, CLAUDE.md and COPYRIGHT.md in $(pwd)."
+
+update_command="curl -fsSL $repository_url/install.sh | sh"
+
+if [ -f Makefile ] && grep -q '^update-agentsmd:' Makefile; then
+  echo "Makefile already has an update-agentsmd target."
+else
+  {
+    printf '\n.PHONY: update-agentsmd\n'
+    printf 'update-agentsmd:\n'
+    printf '\t%s\n' "$update_command"
+  } >> Makefile
+  echo "Added update-agentsmd target to Makefile."
+fi
