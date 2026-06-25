@@ -36,13 +36,13 @@ echo "Updated AGENTS.md, CLAUDE.md and COPYRIGHT.md in $(pwd)."
 
 update_command="curl -fsSL $repository_url/install.sh | sh"
 
-if [ -f Makefile ] && grep -q '^update-agentsmd:' Makefile; then
-  echo "Makefile already has an update-agentsmd target."
+if [ -f Makefile ] && grep -q '^agentsmd:' Makefile; then
+  echo "Makefile already has an agentsmd target."
 else
   {
-    printf '\n.PHONY: update-agentsmd\n'
-    printf 'update-agentsmd:\n'
+    printf '\n.PHONY: agentsmd\n'
+    printf 'agentsmd:\n'
     printf '\t%s\n' "$update_command"
   } >> Makefile
-  echo "Added update-agentsmd target to Makefile."
+  echo "Added agentsmd target to Makefile."
 fi
