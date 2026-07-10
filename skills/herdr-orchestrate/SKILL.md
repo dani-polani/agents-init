@@ -86,7 +86,7 @@ Fallbacks when a provider isn't visible to `omp usage`:
 
 - Claude: `/usage` inside the Claude TUI, or `npx ccusage@latest blocks` (reads local `~/.claude` JSONL; approximate).
 - Codex: `/status` inside the Codex TUI (shows rate-limit usage + reset).
-- Cursor: **no usage-limit CLI** — `cursor-agent usage`/`about`/`status` show only activity/days, not remaining budget. Read headroom from the Cursor dashboard (monthly billing), or from `omp usage` if Cursor is logged into omp.
+- Cursor: **no programmatic usage readout at all** — `cursor-agent usage`/`about`/`status` show only activity/days, and `omp usage` can't fetch it even when Cursor is logged into omp. Headroom must be checked **manually** on the Cursor dashboard (monthly billing).
 
 If you can't determine usage automatically, **ask the human** for current headroom/priorities. Do not guess silently.
 
@@ -94,7 +94,7 @@ If you can't determine usage automatically, **ask the human** for current headro
 
 - **Claude → use Opus.** Launch with `--model opus`. **Never use Sonnet** for this flow (too weak).
 - **Codex → use when there's plenty of free usage.** Good default workhorse otherwise.
-- **Cursor → specialist for fast, well-scoped tasks.** Its **Composer 2.5** model (`--model composer-2.5`) is fast and strong on constrained technical tasks where the implementation path is already clear. Caveat: usage is **monthly** and there is **no reliable CLI to read remaining budget** (`usage`/`about`/`status` show activity, not headroom), so judge it conservatively — from the Cursor dashboard, or from `omp usage` if Cursor is logged into omp. Don't hand it large open-ended work; do reach for it for quick, clear-cut slices.
+- **Cursor → specialist for fast, well-scoped tasks.** Its **Composer 2.5** model (`--model composer-2.5`) is fast and strong on constrained technical tasks where the implementation path is already clear. Caveat: usage is **monthly** and there is **no way to read remaining budget programmatically** (neither `cursor-agent` nor `omp usage` reports it), so headroom is a **manual check** on the Cursor dashboard — judge it conservatively. Don't hand it large open-ended work; do reach for it for quick, clear-cut slices.
 - **OMP → use when it has usage available.** Strong native tooling and first-class subagents.
 - **Reset timing:** if an agent's window resets **soon**, prefer spending *that* agent now (headroom would otherwise reset unused) — but don't hand it a long task it can't finish before the reset.
 - **Shared-quota caution:** agents can route to the same underlying account (e.g. `omp` may be configured to use the OpenAI Codex plan, sharing quota with `codex`). `omp usage` shows per-account limits — don't pick two agents that drain the *same* account unless it has headroom.
