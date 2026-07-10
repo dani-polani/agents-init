@@ -128,6 +128,8 @@ Note: `cursor-agent` has native `-w/--worktree`, but prefer explicit `git worktr
 
 Per subagent: (1) write its brief to a file in its worktree, (2) `herdr agent start` it in interactive TUI seeded with "read the brief and do it", (3) confirm herdr sees it.
 
+**Name every agent target after its harness, not its task.** Use `claude`, `codex`, `cursor`, `omp` so the human can tell who is who in the sidebar without opening panes. When you run more than one of the same harness, add a short task suffix: `codex-ui`, `codex-api`, `claude-auth`. Never use cryptic task-only names like `Bld65Autofit`. Fix a bad name with `herdr agent rename <target> <name>`.
+
 ```bash
 WT=/path/to/repo.feat-auth
 cat > "$WT/.herdr-task.md" <<'EOF'
@@ -150,31 +152,36 @@ summary, then stop. Do not push or open PRs unless told — the orchestrator doe
 EOF
 
 # Launch as a tracked agent target, interactive TUI, in the worktree, without stealing focus.
-herdr agent start feat-auth --cwd "$WT" --workspace "$WS" --split down --no-focus -- \
-  claude --model opus --permission-mode acceptEdits \
+# Name = harness (add a task suffix only if several of the same harness).
+herdr agent start claude --cwd "$WT" --workspace "$WS" --split down --no-focus -- \
+  claude --model opus --dangerously-skip-permissions \
   "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
 ```
 
 Swap the part after `--` for the chosen agent (see Quick reference). Then **verify detection**:
 
 ```bash
-herdr agent list                 # feat-auth should appear and move to `working`
-herdr agent read feat-auth --source recent --lines 30
-herdr agent explain feat-auth    # if it looks idle but shouldn't be
+herdr agent list                  # `claude` should appear and move to `working`
+herdr agent read claude --source recent --lines 30
+herdr agent explain claude        # if it looks idle but shouldn't be
 ```
 
 If it shows `idle`/`unknown` while clearly running, you almost certainly violated THE ONE RULE (headless mode, backgrounding, redirect, or non-foreground launch). Fix the launch, don't paper over it.
 
-### Auto-mode per agent (no dumb permission prompts, but not reckless)
+### Auto-mode per agent — be PRESCRIPTIVE, default to full auto
 
-| Agent | Interactive auto-mode launch | Notes |
+Subagents run in **isolated worktrees** and you review everything before merge, so the right default is **full auto**: the agent must not stop to ask about routine, sandboxed actions. Half-measures leave agents stuck `blocked` on ordinary shell commands (`npm ci`, `rm node_modules`, running tests) — that is constant babysitting and looks like stalling. **Pass the exact full-auto flag at launch.** Do not rely on the orchestrator discovering the right flag, and do not count on toggling autonomy after the agent is already running.
+
+| Agent | Full-auto launch (isolated worktree) | Notes |
 | --- | --- | --- |
-| Claude | `claude --model opus --permission-mode acceptEdits` | Auto-accepts edits, still gates genuinely risky actions. For fully unattended in an isolated worktree: `--permission-mode bypassPermissions` (== `--dangerously-skip-permissions`). Never Sonnet. |
-| Codex | `codex --sandbox workspace-write --ask-for-approval on-request` | The "Auto"/"approve-for-me" preset: reads/edits/runs in the workspace, only escalates to leave workspace or use network. Full bypass (isolated only): `--dangerously-bypass-approvals-and-sandbox` (`--yolo`). |
-| OMP | `omp` | Default approval mode is already `yolo` (auto-approves all). Safer middle ground: `omp --approval-mode write` (auto read+write, prompts for exec) or set `tools.approval.bash: prompt` in config. |
-| Cursor | `cursor-agent --force` | Interactive TUI, auto-approves; still hands you `sudo`. Do NOT use `-p` (that's headless). Backup agent; check it's installed. |
+| Claude | `claude --model opus --dangerously-skip-permissions` | This is Claude's real auto mode — it runs without permission prompts. `--permission-mode acceptEdits` is **not** enough: it auto-accepts edits but still prompts for every bash command → `blocked` churn. On first use Claude may show a one-time bypass-acknowledgement — the orchestrator answers it once (send Enter / accept). Never Sonnet. |
+| Codex | `codex --dangerously-bypass-approvals-and-sandbox` (alias `--yolo`) | No approvals, no sandbox — acceptable inside a throwaway worktree, and it lets network commands like `npm ci` actually run. Keep-the-sandbox alternative: `codex --sandbox workspace-write --ask-for-approval never` (never prompts, but network / outside-workspace commands just fail). **Do not** use `--ask-for-approval on-request` for an unattended fleet — that is what makes Codex block constantly. |
+| OMP | `omp --yolo` | Pass `--yolo` explicitly (don't assume config). `yolo` auto-approves all tiers. |
+| Cursor | `cursor-agent --force` | Auto-approves; still asks for `sudo`. Never `-p` (that's headless). Backup agent; check it's installed. |
 
-Because subagents run in isolated worktrees and you review everything, `acceptEdits`/`workspace-write`/`yolo`-in-worktree is an acceptable risk. Dial down (allow/deny lists, `--approval-mode write`) if the human wants tighter control. If an agent does get `blocked` on a prompt, that's fine — herdr shows it and you handle it in Phase 5.
+Safety comes from **worktree isolation + your review**, not from per-command prompts. If you genuinely cannot isolate (agents share one working tree), fall back to guarded presets (`claude --permission-mode acceptEdits`, `codex --sandbox workspace-write --ask-for-approval on-request`, `omp --approval-mode write`) and accept that you will service far more `blocked` states.
+
+**Fixing an agent that keeps blocking on routine approvals:** it was launched without full auto. Best fix — relaunch it with the flag above. If you must keep it running, answer its current prompt with the "**Yes, and don't ask again for similar commands**" option so it stops re-asking, then keep supervising. (Claude runtime note: Shift+Tab only reaches `acceptEdits`, never full bypass — so `--dangerously-skip-permissions` has to be set at launch.)
 
 ## Phase 5 — Supervise
 
@@ -182,15 +189,15 @@ Watch the fleet; act on state transitions. Poll `herdr agent list` (JSON) and bl
 
 ```bash
 herdr agent list                                   # rollup of all agents + statuses
-herdr agent wait feat-auth --status blocked --timeout 600000   # or poll in a loop
-herdr agent read feat-auth --source recent --lines 60          # see what it's doing
+herdr agent wait codex-ui --status blocked --timeout 600000    # or poll in a loop
+herdr agent read codex-ui --source recent --lines 60           # see what it's doing
 ```
 
 Handle states:
 
 - **working** — leave it. Periodically read the pane to confirm real progress (not a stuck loop). If a pane is `working` in herdr but the transcript hasn't advanced in a long time, treat it as stuck: read it, nudge with `herdr agent send`, or restart the subtask.
 - **blocked** — read the pane and **judge**:
-  - If you can resolve it yourself (a decision within the agreed task, a clarification you already know, an obvious fix), answer it: `herdr agent send feat-auth "<answer>"` then `herdr pane send-keys <pane> Enter`.
+  - If you can resolve it yourself (a decision within the agreed task, a clarification you already know, an obvious fix), answer it: `herdr agent send <name> "<answer>"` then `herdr pane send-keys <pane> Enter`. If a subagent keeps blocking on *routine* approvals, it was launched without full auto — relaunch it with the flags in "Auto-mode per agent".
   - If it genuinely needs the **product owner / architect / admin** (scope change, product decision, credentials, destructive/irreversible action, ambiguous requirement), **escalate to the human** and wait.
 - **done** — the subagent finished. Read its full output, then move to review (Phase 6). `done` stays flagged until you view it.
 - **idle/unknown while active** — detection problem. `herdr agent explain`, then relaunch correctly.
@@ -263,22 +270,26 @@ Projects define how work is tracked — usually in **`AGENTS.md`** and **`PROJEC
 ## Quick reference — launch commands
 
 ```bash
-# Claude (Opus, auto-accept)
-herdr agent start <name> --cwd "$WT" --split down --no-focus -- \
-  claude --model opus --permission-mode acceptEdits \
+# Agent-target name = the harness (claude / codex / omp / cursor); add a task suffix
+# only when several of the same harness run at once (codex-ui, codex-api).
+# Full auto because each subagent runs in an isolated worktree and you review before merge.
+
+# Claude (Opus, full auto)
+herdr agent start claude --cwd "$WT" --split down --no-focus -- \
+  claude --model opus --dangerously-skip-permissions \
   "Read ./.herdr-task.md and complete it. Stop when done."
 
-# Codex (Auto preset)
-herdr agent start <name> --cwd "$WT" --split down --no-focus -- \
-  codex --sandbox workspace-write --ask-for-approval on-request \
+# Codex (full auto)
+herdr agent start codex --cwd "$WT" --split down --no-focus -- \
+  codex --dangerously-bypass-approvals-and-sandbox \
   "Read ./.herdr-task.md and complete it. Stop when done."
 
-# OMP (yolo default; use --approval-mode write to be safer)
-herdr agent start <name> --cwd "$WT" --split down --no-focus -- \
-  omp "Read ./.herdr-task.md and complete it. Stop when done."
+# OMP (yolo)
+herdr agent start omp --cwd "$WT" --split down --no-focus -- \
+  omp --yolo "Read ./.herdr-task.md and complete it. Stop when done."
 
 # Cursor (backup; interactive TUI, auto-approve). Check it's installed first.
-herdr agent start <name> --cwd "$WT" --split down --no-focus -- \
+herdr agent start cursor --cwd "$WT" --split down --no-focus -- \
   cursor-agent --force \
   "Read ./.herdr-task.md and complete it. Stop when done."
 ```
