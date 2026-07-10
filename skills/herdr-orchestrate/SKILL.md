@@ -67,6 +67,8 @@ herdr integration install claude   # codex / cursor / omp as needed
 
 `omp` and `pi`-family agents report lifecycle state via hooks (most reliable). `claude`, `codex`, `cursor` are detected from their screen TUI + provide session identity — which is exactly why they must run in interactive TUI mode.
 
+If you will use **Claude in auto mode**, verify its prereqs now (otherwise it silently runs in manual and blocks on everything): `CLAUDE_CODE_ENABLE_AUTO_MODE=1` present in `~/.claude/settings.json` `env` block, model is Opus 4.7/4.8, and Claude Code is v2.1.83+. For **Codex**, confirm `approvals_reviewer = "auto_review"` is in `~/.codex/config.toml` (or pass it per-launch). See "Auto-mode per agent".
+
 ## Phase 2 — Pick agents (usage-aware)
 
 Candidates: **claude, codex, cursor, omp**. Choose per subtask by (a) remaining usage headroom, (b) fit for the task, (c) how soon the usage window resets.
@@ -154,7 +156,7 @@ EOF
 # Launch as a tracked agent target, interactive TUI, in the worktree, without stealing focus.
 # Name = harness (add a task suffix only if several of the same harness).
 herdr agent start claude --cwd "$WT" --workspace "$WS" --split down --no-focus -- \
-  claude --model opus --dangerously-skip-permissions \
+  claude --model opus --permission-mode auto \
   "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
 ```
 
@@ -168,20 +170,22 @@ herdr agent explain claude        # if it looks idle but shouldn't be
 
 If it shows `idle`/`unknown` while clearly running, you almost certainly violated THE ONE RULE (headless mode, backgrounding, redirect, or non-foreground launch). Fix the launch, don't paper over it.
 
-### Auto-mode per agent — be PRESCRIPTIVE, default to full auto
+### Auto-mode per agent — use the CLASSIFIER modes, not dangerous bypass
 
-Subagents run in **isolated worktrees** and you review everything before merge, so the right default is **full auto**: the agent must not stop to ask about routine, sandboxed actions. Half-measures leave agents stuck `blocked` on ordinary shell commands (`npm ci`, `rm node_modules`, running tests) — that is constant babysitting and looks like stalling. **Pass the exact full-auto flag at launch.** Do not rely on the orchestrator discovering the right flag, and do not count on toggling autonomy after the agent is already running.
+The target is "no dumb permission prompts, but never anything genuinely dangerous." Claude and Codex each have a **classifier/reviewer** that decides per-command whether to auto-approve — that is the correct mode for a subagent. It usually works well: routine edits and commands run without prompts, and only genuinely risky actions (destructive + networked, production targets, secrets, exfiltration) get escalated.
 
-| Agent | Full-auto launch (isolated worktree) | Notes |
+**Do NOT use the dangerous full-bypass flags** (`--dangerously-skip-permissions`, `--yolo`, `--dangerously-bypass-approvals-and-sandbox`) for subagents. The risk is small but real, and worktree isolation is not a reason to strip the classifier. Occasional escalation on a truly risky action is *expected and desired* — you judge it in Phase 5. What you avoid is the *timid* presets (`acceptEdits`, plain `on-request` without a reviewer) that prompt on ordinary edits/commands.
+
+| Agent | Classifier auto-mode launch | Notes |
 | --- | --- | --- |
-| Claude | `claude --model opus --dangerously-skip-permissions` | This is Claude's real auto mode — it runs without permission prompts. `--permission-mode acceptEdits` is **not** enough: it auto-accepts edits but still prompts for every bash command → `blocked` churn. On first use Claude may show a one-time bypass-acknowledgement — the orchestrator answers it once (send Enter / accept). Never Sonnet. |
-| Codex | `codex --dangerously-bypass-approvals-and-sandbox` (alias `--yolo`) | No approvals, no sandbox — acceptable inside a throwaway worktree, and it lets network commands like `npm ci` actually run. Keep-the-sandbox alternative: `codex --sandbox workspace-write --ask-for-approval never` (never prompts, but network / outside-workspace commands just fail). **Do not** use `--ask-for-approval on-request` for an unattended fleet — that is what makes Codex block constantly. |
-| OMP | `omp --yolo` | Pass `--yolo` explicitly (don't assume config). `yolo` auto-approves all tiers. |
-| Cursor | `cursor-agent --force` | Auto-approves; still asks for `sudo`. Never `-p` (that's headless). Backup agent; check it's installed. |
+| Claude | `claude --model opus --permission-mode auto` | Real "auto" mode: a separate classifier reviews each action, blocks escalation/exfiltration/destructive ops, runs everything else without prompts. **Prereqs, or it silently falls back to manual:** (1) `CLAUDE_CODE_ENABLE_AUTO_MODE=1` on a signed-in Claude subscription — set it in `~/.claude/settings.json` `env` block (durable) or pass `--env CLAUDE_CODE_ENABLE_AUTO_MODE=1` to `herdr agent start`; (2) model must be Opus 4.7/4.8 (`opus`), never Sonnet 4.5 / Opus 4.5; (3) Claude Code v2.1.83+. "Auto mode unavailable" means a prereq is unmet — not transient. Docs: code.claude.com/docs/en/auto-mode-config |
+| Codex | `codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review` | This is "approve for me": a reviewer agent auto-approves low/medium-risk requests and only escalates high/critical ones. Drop `-c approvals_reviewer=auto_review` if it's already in `~/.codex/config.toml`. Network stays off in `workspace-write` unless enabled, so an install like `npm ci` will surface for approval — that escalation is correct, not a bug. Docs: learn.chatgpt.com/docs/agent-approvals-security |
+| OMP | `omp --approval-mode write` | OMP has **no command classifier** — modes are `always-ask` / `write` / `yolo` plus per-tool policy. `write` auto-approves reads+edits and prompts before shell exec (a real guardrail; expect more `blocked` on bash). `--yolo` removes all gating (small but real risk) — avoid for subagents. Because it lacks a classifier, prefer Claude/Codex for unattended work. |
+| Cursor | `cursor-agent --force` | Auto-approves without a classifier; still gates `sudo`. Never `-p` (headless). Backup agent; check it's installed. |
 
-Safety comes from **worktree isolation + your review**, not from per-command prompts. If you genuinely cannot isolate (agents share one working tree), fall back to guarded presets (`claude --permission-mode acceptEdits`, `codex --sandbox workspace-write --ask-for-approval on-request`, `omp --approval-mode write`) and accept that you will service far more `blocked` states.
+If you genuinely cannot use a classifier mode and cannot isolate, drop to a guarded preset and service the extra prompts. Reserve the dangerous bypass flags for throwaway containers you own — not for the subagent fleet.
 
-**Fixing an agent that keeps blocking on routine approvals:** it was launched without full auto. Best fix — relaunch it with the flag above. If you must keep it running, answer its current prompt with the "**Yes, and don't ask again for similar commands**" option so it stops re-asking, then keep supervising. (Claude runtime note: Shift+Tab only reaches `acceptEdits`, never full bypass — so `--dangerously-skip-permissions` has to be set at launch.)
+**If a subagent keeps blocking, tell the two cases apart:** (a) it prompts on *routine* edits/commands → it is not actually in the classifier mode: check the prereqs (Claude env var + Opus model; Codex flags + `auto_review`) and relaunch. (b) it escalates a *genuinely risky* action → that is the classifier working; judge it in Phase 5 and either answer it or escalate to the human. Never "fix" case (b) by switching to a dangerous bypass mode. (Note: in auto mode Claude itself *blocks* spawning agents that run with isolation/approvals disabled like `--dangerously-skip-permissions`/`--yolo`, so mixing bypass subagents under an auto orchestrator gets blocked anyway.)
 
 ## Phase 5 — Supervise
 
@@ -262,7 +266,9 @@ Projects define how work is tracked — usually in **`AGENTS.md`** and **`PROJEC
 - Running the agent, then walking away without checking `herdr agent list` shows it `working`. **Always verify.**
 - Not installing the herdr integration → weaker/erroneous state.
 - Spawning one worktree/branch/PR per trivial slice → merge hell and PR sprawl. Isolate only where work collides.
-- Using Sonnet for Claude in this flow. Use **Opus**.
+- Using dangerous bypass flags (`--dangerously-skip-permissions`, `--yolo`, `--dangerously-bypass-approvals-and-sandbox`) for subagents. Small but real risk. Use the classifier modes: Claude `--permission-mode auto`, Codex `--ask-for-approval on-request` + `approvals_reviewer=auto_review`.
+- Launching Claude with `--permission-mode auto` without its prereqs (env var + Opus model) — it silently drops to manual and blocks on everything. Fix the prereqs, don't switch to bypass.
+- Using Sonnet for Claude in this flow. Use **Opus** (also required for auto mode).
 - Draining two agents that share the same underlying account/quota at once.
 - Letting Codex/OMP commit under the human's identity with **no `Co-authored-by:` trailer** — you lose track of who did what. Instruct them in the brief and verify.
 - Ignoring `AGENTS.md`/`PROJECT.md` task conventions, or forgetting to update task statuses/summaries as the fleet progresses.
@@ -272,21 +278,21 @@ Projects define how work is tracked — usually in **`AGENTS.md`** and **`PROJEC
 ```bash
 # Agent-target name = the harness (claude / codex / omp / cursor); add a task suffix
 # only when several of the same harness run at once (codex-ui, codex-api).
-# Full auto because each subagent runs in an isolated worktree and you review before merge.
+# Classifier-gated auto mode — NOT dangerous bypass (see "Auto-mode per agent").
 
-# Claude (Opus, full auto)
+# Claude (Opus, auto mode — needs CLAUDE_CODE_ENABLE_AUTO_MODE=1 + Opus model)
 herdr agent start claude --cwd "$WT" --split down --no-focus -- \
-  claude --model opus --dangerously-skip-permissions \
+  claude --model opus --permission-mode auto \
   "Read ./.herdr-task.md and complete it. Stop when done."
 
-# Codex (full auto)
+# Codex ("approve for me" / auto-review)
 herdr agent start codex --cwd "$WT" --split down --no-focus -- \
-  codex --dangerously-bypass-approvals-and-sandbox \
+  codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review \
   "Read ./.herdr-task.md and complete it. Stop when done."
 
-# OMP (yolo)
+# OMP (no classifier — 'write' gates shell exec; avoid --yolo for subagents)
 herdr agent start omp --cwd "$WT" --split down --no-focus -- \
-  omp --yolo "Read ./.herdr-task.md and complete it. Stop when done."
+  omp --approval-mode write "Read ./.herdr-task.md and complete it. Stop when done."
 
 # Cursor (backup; interactive TUI, auto-approve). Check it's installed first.
 herdr agent start cursor --cwd "$WT" --split down --no-focus -- \
