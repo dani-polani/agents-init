@@ -86,7 +86,7 @@ Fallbacks when a provider isn't visible to `omp usage`:
 
 - Claude: `/usage` inside the Claude TUI, or `npx ccusage@latest blocks` (reads local `~/.claude` JSONL; approximate).
 - Codex: `/status` inside the Codex TUI (shows rate-limit usage + reset).
-- Cursor: dashboard only (usage is **monthly**); no clean CLI.
+- Cursor: **no usage-limit CLI** — `cursor-agent usage`/`about`/`status` show only activity/days, not remaining budget. Read headroom from the Cursor dashboard (monthly billing), or from `omp usage` if Cursor is logged into omp.
 
 If you can't determine usage automatically, **ask the human** for current headroom/priorities. Do not guess silently.
 
@@ -94,7 +94,7 @@ If you can't determine usage automatically, **ask the human** for current headro
 
 - **Claude → use Opus.** Launch with `--model opus`. **Never use Sonnet** for this flow (too weak).
 - **Codex → use when there's plenty of free usage.** Good default workhorse otherwise.
-- **Cursor → conservative. Backup, not primary.** Its usage is **monthly**, so a burst here costs more proportionally. Prefer it only when others are low or the task specifically fits. (Note: `cursor-agent` may not be installed — check first.)
+- **Cursor → specialist for fast, well-scoped tasks.** Its **Composer 2.5** model (`--model composer-2.5`) is fast and strong on constrained technical tasks where the implementation path is already clear. Caveat: usage is **monthly** and there is **no reliable CLI to read remaining budget** (`usage`/`about`/`status` show activity, not headroom), so judge it conservatively — from the Cursor dashboard, or from `omp usage` if Cursor is logged into omp. Don't hand it large open-ended work; do reach for it for quick, clear-cut slices.
 - **OMP → use when it has usage available.** Strong native tooling and first-class subagents.
 - **Reset timing:** if an agent's window resets **soon**, prefer spending *that* agent now (headroom would otherwise reset unused) — but don't hand it a long task it can't finish before the reset.
 - **Shared-quota caution:** agents can route to the same underlying account (e.g. `omp` may be configured to use the OpenAI Codex plan, sharing quota with `codex`). `omp usage` shows per-account limits — don't pick two agents that drain the *same* account unless it has headroom.
@@ -172,7 +172,7 @@ If it shows `idle`/`unknown` while clearly running, you almost certainly violate
 
 ### Auto-mode per agent — use the CLASSIFIER modes, not dangerous bypass
 
-The target is "no dumb permission prompts, but never anything genuinely dangerous." Claude and Codex each have a **classifier/reviewer** that decides per-command whether to auto-approve — that is the correct mode for a subagent. It usually works well: routine edits and commands run without prompts, and only genuinely risky actions (destructive + networked, production targets, secrets, exfiltration) get escalated.
+The target is "no dumb permission prompts, but never anything genuinely dangerous." Claude, Codex, and Cursor each have a **classifier/reviewer** that decides per-command whether to auto-approve — that is the correct mode for a subagent (only OMP lacks one). It usually works well: routine edits and commands run without prompts, and only genuinely risky actions (destructive + networked, production targets, secrets, exfiltration) get escalated.
 
 **Do NOT use the dangerous full-bypass flags** (`--dangerously-skip-permissions`, `--yolo`, `--dangerously-bypass-approvals-and-sandbox`) for subagents. The risk is small but real, and worktree isolation is not a reason to strip the classifier. Occasional escalation on a truly risky action is *expected and desired* — you judge it in Phase 5. What you avoid is the *timid* presets (`acceptEdits`, plain `on-request` without a reviewer) that prompt on ordinary edits/commands.
 
@@ -181,7 +181,7 @@ The target is "no dumb permission prompts, but never anything genuinely dangerou
 | Claude | `claude --model opus --permission-mode auto` | Real "auto" mode: a separate classifier reviews each action, blocks escalation/exfiltration/destructive ops, runs everything else without prompts. **Prereqs, or it silently falls back to manual:** (1) `CLAUDE_CODE_ENABLE_AUTO_MODE=1` on a signed-in Claude subscription — set it in `~/.claude/settings.json` `env` block (durable) or pass `--env CLAUDE_CODE_ENABLE_AUTO_MODE=1` to `herdr agent start`; (2) model must be Opus 4.7/4.8 (`opus`), never Sonnet 4.5 / Opus 4.5; (3) Claude Code v2.1.83+. "Auto mode unavailable" means a prereq is unmet — not transient. Docs: code.claude.com/docs/en/auto-mode-config |
 | Codex | `codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review` | This is "approve for me": a reviewer agent auto-approves low/medium-risk requests and only escalates high/critical ones. Drop `-c approvals_reviewer=auto_review` if it's already in `~/.codex/config.toml`. Network stays off in `workspace-write` unless enabled, so an install like `npm ci` will surface for approval — that escalation is correct, not a bug. Docs: learn.chatgpt.com/docs/agent-approvals-security |
 | OMP | `omp --approval-mode write` | OMP has **no command classifier** — modes are `always-ask` / `write` / `yolo` plus per-tool policy. `write` auto-approves reads+edits and prompts before shell exec (a real guardrail; expect more `blocked` on bash). `--yolo` removes all gating (small but real risk) — avoid for subagents. Because it lacks a classifier, prefer Claude/Codex for unattended work. |
-| Cursor | `cursor-agent --force` | Auto-approves without a classifier; still gates `sudo`. Never `-p` (headless). Backup agent; check it's installed. |
+| Cursor | `cursor-agent --auto-review --model composer-2.5` | "Smart Auto": a server classifier auto-runs safe tool calls and prompts for the rest — the right mode. `--force`/`--yolo` = "Run Everything" (no classifier) — avoid. Never `-p` (headless). Best fit: fast, well-scoped technical tasks where the path is already clear, on Composer 2.5. |
 
 If you genuinely cannot use a classifier mode and cannot isolate, drop to a guarded preset and service the extra prompts. Reserve the dangerous bypass flags for throwaway containers you own — not for the subagent fleet.
 
@@ -316,9 +316,9 @@ herdr agent start codex --cwd "$WT" --split down --no-focus -- \
 herdr agent start omp --cwd "$WT" --split down --no-focus -- \
   omp --approval-mode write "Read ./.herdr-task.md and complete it. Stop when done."
 
-# Cursor (backup; interactive TUI, auto-approve). Check it's installed first.
+# Cursor (Smart Auto classifier; Composer 2.5 for fast, well-scoped tasks)
 herdr agent start cursor --cwd "$WT" --split down --no-focus -- \
-  cursor-agent --force \
+  cursor-agent --auto-review --model composer-2.5 \
   "Read ./.herdr-task.md and complete it. Stop when done."
 ```
 
