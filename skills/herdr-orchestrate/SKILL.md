@@ -185,6 +185,15 @@ The target is "no dumb permission prompts, but never anything genuinely dangerou
 
 If you genuinely cannot use a classifier mode and cannot isolate, drop to a guarded preset and service the extra prompts. Reserve the dangerous bypass flags for throwaway containers you own — not for the subagent fleet.
 
+**Enabling auto mode on an already-running Claude (post-hoc)** — when an agent is already up in the wrong mode, you don't have to relaunch: cycle its permission mode by sending `shift+tab`, re-reading the status bar until it shows `auto mode on`:
+
+```bash
+herdr pane send-keys <pane> shift+tab
+herdr pane read <pane> --source visible --lines 3   # look for "auto mode on"; repeat if not there yet
+```
+
+`shift+tab` cycles `default → acceptEdits → plan → (auto)`, so it can take a few presses, and `auto` only appears in the cycle when the account meets the prereqs above. Launching with `--permission-mode auto` is the deterministic path — prefer it, and use this runtime toggle only to fix an agent that's already running.
+
 **If a subagent keeps blocking, tell the two cases apart:** (a) it prompts on *routine* edits/commands → it is not actually in the classifier mode: check the prereqs (Claude env var + Opus model; Codex flags + `auto_review`) and relaunch. (b) it escalates a *genuinely risky* action → that is the classifier working; judge it in Phase 5 and either answer it or escalate to the human. Never "fix" case (b) by switching to a dangerous bypass mode. (Note: in auto mode Claude itself *blocks* spawning agents that run with isolation/approvals disabled like `--dangerously-skip-permissions`/`--yolo`, so mixing bypass subagents under an auto orchestrator gets blocked anyway.)
 
 ## Phase 5 — Supervise
