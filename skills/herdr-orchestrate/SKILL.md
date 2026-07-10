@@ -185,14 +185,27 @@ The target is "no dumb permission prompts, but never anything genuinely dangerou
 
 If you genuinely cannot use a classifier mode and cannot isolate, drop to a guarded preset and service the extra prompts. Reserve the dangerous bypass flags for throwaway containers you own — not for the subagent fleet.
 
-**Enabling auto mode on an already-running Claude (post-hoc)** — when an agent is already up in the wrong mode, you don't have to relaunch: cycle its permission mode by sending `shift+tab`, re-reading the status bar until it shows `auto mode on`:
+**Switching a running agent into auto mode (post-hoc).** Launching in the right mode from the start is the primary path and avoids all of this — do that first. If an agent is already up in the wrong mode, two options:
+
+- *Hot-toggle* — works only while the agent is `idle`/`working`, **not** while it sits at a prompt. Send `shift+tab` and re-read the status bar until it shows `auto mode on`:
 
 ```bash
 herdr pane send-keys <pane> shift+tab
 herdr pane read <pane> --source visible --lines 3   # look for "auto mode on"; repeat if not there yet
 ```
 
-`shift+tab` cycles `default → acceptEdits → plan → (auto)`, so it can take a few presses, and `auto` only appears in the cycle when the account meets the prereqs above. Launching with `--permission-mode auto` is the deterministic path — prefer it, and use this runtime toggle only to fix an agent that's already running.
+  `shift+tab` cycles `default → acceptEdits → plan → (auto)`, so it may take a few presses, and `auto` only appears when the account meets the prereqs above. If the agent is **blocked at an approval prompt**, the keystroke only changes the prompt selection and does not change the session mode — use restart-in-place instead.
+
+- *Restart in place* (reliable, keeps the work) — closing a pane kills only the agent process, not the files on disk. Relaunch in the same worktree with the right flag and tell it to continue from the uncommitted changes:
+
+```bash
+herdr pane close <old_pane>
+herdr agent start claude --cwd "$WT" --split down --no-focus -- \
+  claude --model opus --permission-mode auto \
+  "Continue ./.herdr-task.md from the current unstaged changes in this worktree. You are in auto mode. Work only in this worktree. Do not discard existing edits. Finish and commit, then stop."
+```
+
+  This restart-in-place pattern is also the general way to change an agent's mode, model, or even harness mid-task without losing uncommitted work — the worktree holds the state, so verify `git status` in the worktree looks right before and after.
 
 **If a subagent keeps blocking, tell the two cases apart:** (a) it prompts on *routine* edits/commands → it is not actually in the classifier mode: check the prereqs (Claude env var + Opus model; Codex flags + `auto_review`) and relaunch. (b) it escalates a *genuinely risky* action → that is the classifier working; judge it in Phase 5 and either answer it or escalate to the human. Never "fix" case (b) by switching to a dangerous bypass mode. (Note: in auto mode Claude itself *blocks* spawning agents that run with isolation/approvals disabled like `--dangerously-skip-permissions`/`--yolo`, so mixing bypass subagents under an auto orchestrator gets blocked anyway.)
 
