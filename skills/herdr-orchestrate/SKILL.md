@@ -28,7 +28,7 @@ The most common failure is launching a subagent in a way that burns tokens while
 
 So, **always**:
 
-- Launch every subagent in its **interactive TUI**, as the pane's **foreground process**, via `herdr agent start` (this registers it as an agent *target* herdr tracks by name).
+- Launch every subagent in its **interactive TUI**, as the pane's **foreground process**, via `herdr agent start` (this registers it as an agent *target* herdr tracks by name). Then put the pane in the right place with `herdr pane move` — see the fixed layout in Phase 4. Never let a subagent split your orchestrator pane, and never give it its own workspace.
 - **Never** launch subagents in print/headless/one-shot mode: no `claude -p`, no `codex exec`, no `cursor-agent -p`, no `omp -p`. Those produce no TUI → false idle.
 - **Never** background it (`&`, `nohup`), wrap it in an extra subshell, or redirect its output to a file/pipe. All of these hide the TUI from herdr.
 - Give the task as a **positional prompt** (interactive seed) or via `herdr agent send` *after* the TUI is ready — not through headless flags.
@@ -47,6 +47,7 @@ Clarify before spawning anything:
 - What is "done" for each? Acceptance criteria, tests, and what counts as deployable.
 - Any constraints: which repo/branch, files to avoid, budget/usage limits, deadlines.
 - PR shape: default is **one PR per deployable unit**. A big feature stays in one PR unless that's genuinely unwieldy. Prefer 1-2 large PRs over 10 tiny ones.
+- **PR ownership:** *you* (the orchestrator) open every PR after review and consolidation. Subagents **never push and never open PRs** — they commit to their branch and stop. Open PRs **ready for review — never draft** (this team doesn't use drafts; they're just friction).
 - **Read `AGENTS.md` and `PROJECT.md`** (and anything they link) before doing anything. The project usually defines a **task-management system** and conventions there. Follow them — see "Respect the project's task management" below.
 
 Write a short brief per subtask. You will drop each brief into a file the subagent reads (see Phase 4).
@@ -115,14 +116,7 @@ cd /path/to/repo
 git worktree add ../repo.feat-auth -b feat/auth        # new branch off HEAD
 ```
 
-Then each subagent gets a herdr **workspace** rooted at its worktree so herdr rolls its state up per project:
-
-```bash
-WS=$(herdr workspace create --cwd /path/to/repo.feat-auth --label "feat/auth" --no-focus \
-  | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["workspace"]["workspace_id"])')
-```
-
-(For a single shared feature, put multiple subagent panes as tabs/splits inside one workspace instead of many workspaces.)
+Subagents do **not** get their own herdr **workspace** — a workspace represents a *project*, not an agent. Keep every subagent as a **pane in your current workspace and main tab**; its per-worktree state still rolls up correctly because herdr reads it from the pane and its cwd. Exactly where each pane goes is fixed in Phase 4 → "Pane layout".
 
 Note: `cursor-agent` has native `-w/--worktree`, but prefer explicit `git worktree` so the flow is uniform across agents and you control branch names.
 
@@ -131,6 +125,22 @@ Note: `cursor-agent` has native `-w/--worktree`, but prefer explicit `git worktr
 Per subagent: (1) write its brief to a file in its worktree, (2) `herdr agent start` it in interactive TUI seeded with "read the brief and do it", (3) confirm herdr sees it.
 
 **Name every agent target after its harness, not its task.** Use `claude`, `codex`, `cursor`, `omp` so the human can tell who is who in the sidebar without opening panes. When you run more than one of the same harness, add a short task suffix: `codex-ui`, `codex-api`, `claude-auth`. Never use cryptic task-only names like `Bld65Autofit`. Fix a bad name with `herdr agent rename <target> <name>`.
+
+### Pane layout — where agents go (fixed rules)
+
+Agents must land in a **predictable** place. Follow this exactly; do not improvise splits, and do not create workspaces or tabs for agents.
+
+- **Stay in your current workspace and main tab.** Never `herdr workspace create` for an agent (workspaces = projects), and don't spread agents across tabs by default.
+- **Your orchestrator pane is the left column: ~half width, full height. Never split it again.** The human talks to you and needs it readable.
+- **All agents live in the right column.** The first agent *becomes* that column; the rest fill it top → bottom.
+- **Fixed fill order:** up to **3 stacked rows** first (top, middle, bottom). Only if you need a 4th–6th agent, split each row into **2 columns** (left, then right). That is the cap: **6 agent panes**. Prefer finishing or recycling an agent over exceeding it.
+- **More than 6 at once** (rare for a small team): open **one new tab in the same workspace** for the overflow grid — you stay in the main tab. Still never a new workspace.
+
+You build this with `herdr agent start` (keeps naming + tracking + integration state) and then `herdr pane move --target-pane` (drops the pane into the exact slot). `agent start` alone would split *your* pane, so always move the pane afterwards.
+
+### Launch recipe
+
+Write each agent's brief into its worktree, then start + move it into its slot. `$WT2`/`$WT3` are the other agents' worktrees — reuse the same `$WT` for every agent that shares one feature/worktree.
 
 ```bash
 WT=/path/to/repo.feat-auth
@@ -153,14 +163,37 @@ Commit your work on this branch (with the attribution trailer), print a short
 summary, then stop. Do not push or open PRs unless told — the orchestrator does that.
 EOF
 
-# Launch as a tracked agent target, interactive TUI, in the worktree, without stealing focus.
-# Name = harness (add a task suffix only if several of the same harness).
-herdr agent start claude --cwd "$WT" --workspace "$WS" --split down --no-focus -- \
+# --- Find your own pane + tab once; never split your pane again ---
+ORCH=$(herdr pane current | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')
+TAB=$(herdr pane current  | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["tab_id"])')
+pid(){ herdr agent get "$1" | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["pane_id"])'; }
+
+# --- Row 1: first agent takes the RIGHT half (you keep the left half, full height) ---
+# Name = harness (add a task suffix only if several of the same harness). --tab keeps it
+# in the current tab/workspace; NEVER pass --workspace and NEVER --split your own pane.
+herdr agent start claude --cwd "$WT" --tab "$TAB" --no-focus -- \
   claude --model opus --permission-mode auto \
   "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
+ROW1=$(pid claude); herdr pane move "$ROW1" --tab "$TAB" --target-pane "$ORCH" --split right --ratio 0.5 --no-focus
+
+# --- Row 2 stacks under row 1; Row 3 under row 2 (swap the argv per agent) ---
+herdr agent start codex --cwd "$WT2" --tab "$TAB" --no-focus -- \
+  codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review \
+  "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
+ROW2=$(pid codex); herdr pane move "$ROW2" --tab "$TAB" --target-pane "$ROW1" --split down --no-focus
+
+herdr agent start omp --cwd "$WT3" --tab "$TAB" --no-focus -- \
+  omp --approval-mode write \
+  "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
+ROW3=$(pid omp); herdr pane move "$ROW3" --tab "$TAB" --target-pane "$ROW2" --split down --no-focus
+
+# --- Agents 4-6 only if needed: split each row into two columns (left -> right) ---
+# herdr agent start codex-api --cwd "$WT4" --tab "$TAB" --no-focus -- codex ... ; P4=$(pid codex-api)
+# herdr pane move "$P4" --tab "$TAB" --target-pane "$ROW1" --split right --no-focus   # right of row 1
+# ...repeat with --target-pane "$ROW2" / "$ROW3" for the 5th / 6th agent.
 ```
 
-Swap the part after `--` for the chosen agent (see Quick reference). Then **verify detection**:
+Swap the argv after `--` for the chosen agent (see "Auto-mode per agent" / Quick reference). Then **verify detection**:
 
 ```bash
 herdr agent list                  # `claude` should appear and move to `working`
@@ -196,13 +229,15 @@ herdr pane read <pane> --source visible --lines 3   # look for "auto mode on"; r
 
   `shift+tab` cycles `default → acceptEdits → plan → (auto)`, so it may take a few presses, and `auto` only appears when the account meets the prereqs above. If the agent is **blocked at an approval prompt**, the keystroke only changes the prompt selection and does not change the session mode — use restart-in-place instead.
 
-- *Restart in place* (reliable, keeps the work) — closing a pane kills only the agent process, not the files on disk. Relaunch in the same worktree with the right flag and tell it to continue from the uncommitted changes:
+- *Restart in place* (reliable, keeps the work) — closing a pane kills only the agent process, not the files on disk. Note the slot's neighbour first, relaunch in the same worktree with the right flag, then move the new pane back into that slot and tell it to continue from the uncommitted changes:
 
 ```bash
 herdr pane close <old_pane>
-herdr agent start claude --cwd "$WT" --split down --no-focus -- \
+herdr agent start claude --cwd "$WT" --tab "$TAB" --no-focus -- \
   claude --model opus --permission-mode auto \
   "Continue ./.herdr-task.md from the current unstaged changes in this worktree. You are in auto mode. Work only in this worktree. Do not discard existing edits. Finish and commit, then stop."
+# move it back into the freed slot (e.g. under ROW1): 
+herdr pane move "$(pid claude)" --tab "$TAB" --target-pane "$ROW1" --split down --no-focus
 ```
 
   This restart-in-place pattern is also the general way to change an agent's mode, model, or even harness mid-task without losing uncommitted work — the worktree holds the state, so verify `git status` in the worktree looks right before and after.
@@ -237,7 +272,8 @@ Once subtasks are done:
 1. **Review** each branch's diff yourself (you're the reviewer). Look for correctness, missing tests, security issues, and whether it actually meets acceptance criteria. Prefer running the tests / a smoke check to confirm the feature works, especially if the subagent didn't make that obvious.
 2. **Bounce back** serious problems: send the subagent a focused fix task (`herdr agent send`), or spawn a fresh fixer subagent for that specific issue (Phase 4). Don't accumulate tiny throwaway branches — reuse the existing branch/worktree when reasonable.
 3. **Consolidate** into a small number of **deployable** PRs. A PR = one thing you can deploy as a whole. Merge sibling branches of one feature together, **resolve conflicts yourself**, and open 1-2 big PRs rather than many fragments — unless splitting is genuinely necessary for deploy independence.
-4. **Deliver**: the outcome is one or a few PRs + your review notes + a short report (what each agent did, what you changed, what's tested, any follow-ups or escalations). Add `Co-authored-by:` trailers for every contributing subagent (see "Attribution"), and **update the project's task management** — statuses, work summaries, and PR links — per `AGENTS.md`/`PROJECT.md`.
+4. **Open the PRs yourself, ready for review — never draft.** You are the **sole PR author**: subagents commit to their branches and stop; they do not push or open PRs. Drafts just add friction for this team, so create every PR in the normal ready state (`gh pr create` without `--draft`).
+5. **Deliver**: the outcome is one or a few PRs + your review notes + a short report (what each agent did, what you changed, what's tested, any follow-ups or escalations). Add `Co-authored-by:` trailers for every contributing subagent (see "Attribution"), and **update the project's task management** — statuses, work summaries, and PR links — per `AGENTS.md`/`PROJECT.md`.
 
 ## Cleanup
 
@@ -288,6 +324,10 @@ Projects define how work is tracked — usually in **`AGENTS.md`** and **`PROJEC
 - Running the agent, then walking away without checking `herdr agent list` shows it `working`. **Always verify.**
 - Not installing the herdr integration → weaker/erroneous state.
 - Spawning one worktree/branch/PR per trivial slice → merge hell and PR sprawl. Isolate only where work collides.
+- Creating a herdr **workspace** (or scattering tabs) per subagent → the sidebar fills with fake "projects". Agents are **panes in your current workspace/main tab**; place them with `pane move` per the fixed layout.
+- Letting `agent start` split **your** orchestrator pane, or improvising split order → the human loses the readable half-width orchestrator pane and can't tell where the next agent appears. Keep your pane whole; fill the right column top→bottom, then 2 columns per row.
+- Subagents pushing branches or opening their own PRs → **you** are the sole PR author. They commit and stop.
+- Opening PRs as **drafts** → this team doesn't use them; ship them ready for review.
 - Using dangerous bypass flags (`--dangerously-skip-permissions`, `--yolo`, `--dangerously-bypass-approvals-and-sandbox`) for subagents. Small but real risk. Use the classifier modes: Claude `--permission-mode auto`, Codex `--ask-for-approval on-request` + `approvals_reviewer=auto_review`.
 - Launching Claude with `--permission-mode auto` without its prereqs (env var + Opus model) — it silently drops to manual and blocks on everything. Fix the prereqs, don't switch to bypass.
 - Using Sonnet for Claude in this flow. Use **Opus** (also required for auto mode).
@@ -301,25 +341,31 @@ Projects define how work is tracked — usually in **`AGENTS.md`** and **`PROJEC
 # Agent-target name = the harness (claude / codex / omp / cursor); add a task suffix
 # only when several of the same harness run at once (codex-ui, codex-api).
 # Classifier-gated auto mode — NOT dangerous bypass (see "Auto-mode per agent").
+# Start with --tab "$TAB" --no-focus (stay in the current tab/workspace, never --workspace),
+# then `herdr pane move ... --target-pane` into its slot (see Phase 4 → Pane layout).
 
 # Claude (Opus, auto mode — needs CLAUDE_CODE_ENABLE_AUTO_MODE=1 + Opus model)
-herdr agent start claude --cwd "$WT" --split down --no-focus -- \
+herdr agent start claude --cwd "$WT" --tab "$TAB" --no-focus -- \
   claude --model opus --permission-mode auto \
   "Read ./.herdr-task.md and complete it. Stop when done."
 
 # Codex ("approve for me" / auto-review)
-herdr agent start codex --cwd "$WT" --split down --no-focus -- \
+herdr agent start codex --cwd "$WT" --tab "$TAB" --no-focus -- \
   codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review \
   "Read ./.herdr-task.md and complete it. Stop when done."
 
 # OMP (no classifier — 'write' gates shell exec; avoid --yolo for subagents)
-herdr agent start omp --cwd "$WT" --split down --no-focus -- \
+herdr agent start omp --cwd "$WT" --tab "$TAB" --no-focus -- \
   omp --approval-mode write "Read ./.herdr-task.md and complete it. Stop when done."
 
 # Cursor (Smart Auto classifier; Composer 2.5 for fast, well-scoped tasks)
-herdr agent start cursor --cwd "$WT" --split down --no-focus -- \
+herdr agent start cursor --cwd "$WT" --tab "$TAB" --no-focus -- \
   cursor-agent --auto-review --model composer-2.5 \
   "Read ./.herdr-task.md and complete it. Stop when done."
+
+# Placement (after each start): first agent -> right half; then stack rows; then 2 cols/row.
+herdr pane move "$(pid claude)" --tab "$TAB" --target-pane "$ORCH"  --split right --ratio 0.5 --no-focus
+herdr pane move "$(pid codex)"  --tab "$TAB" --target-pane "$ROW1"  --split down  --no-focus
 ```
 
 Supervise:
