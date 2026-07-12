@@ -48,6 +48,9 @@ scheduled: 2026-01-01  # optional
 due: 2026-01-01        # optional
 timeEstimate: 60       # minutes, optional
 blockedBy:             # list of wikilinks, optional
+linear-issue:          # issue URL — managed by the vault's Linear sync, never edit by hand
+linear-team:           # managed by the Linear sync
+linear-synced-at:      # managed by the Linear sync
 timeEntries:           # filled during work, see Time tracking section
   - startTime: 2026-01-01T10:00:00.000Z
     description: Brief description of what was done
@@ -100,7 +103,8 @@ When creating a task:
 
 When updating a task, update `dateModified` to the current timestamp.
 
-When work on a task is complete:
+When work on a task is complete, run the `obsidian-task-done` skill — it performs the close-out
+in the right order. The steps it covers:
 - Set `status: review` (not `done` — the user reviews and closes)
 - Add a brief summary to the task body: what was done and anything the user should know
   (e.g. decisions made, caveats, follow-ups)
@@ -153,6 +157,25 @@ when completing meaningful work.
 - Focus on user-visible outcomes, not implementation details
 - **Compact periodically:** if a date has many granular entries, merge them. Older history should read as milestones, not a commit log
 - Significant features and decisions stay separate; minor fixes and polish get grouped
+
+---
+
+## Linear
+
+Tasks sync to Linear automatically through the vault's own integration — you do not create issues,
+set `linear-*` fields, or push status. Those fields are managed for you.
+
+The one manual step is on the code side: **when you open a PR for a task, tag it with the task's
+Linear issue so Linear links the PR to the issue.**
+
+1. Read `linear-issue` from the task frontmatter. If the field is absent, the task is not tracked in
+   Linear — open the PR normally and skip the rest.
+2. Take the issue identifier from the URL: the segment after `/issue/`, e.g.
+   `https://linear.app/<workspace>/issue/BLD-67/...` → `BLD-67`.
+3. Put that identifier in the PR **title**, in parentheses at the end, and mention it once in the PR
+   **body**. Example title: `Rebalance free and Pro tiers (BLD-67)`.
+
+That is all — status, links, and sync are handled by the integration.
 
 ---
 

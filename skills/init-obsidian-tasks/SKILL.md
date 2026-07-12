@@ -11,15 +11,29 @@ Sets up the Obsidian / TaskNotes task flow in the current repository: creates
 
 Templates live in this skill's `assets/` directory.
 
-## Step 1 — Gather inputs
+## Step 1 — Find the vault (don't ask for a raw path first)
 
-Ask the user for both, then proceed:
+This workflow requires the TaskNotes plugin, so the vault always contains
+`<vault>/.obsidian/plugins/tasknotes/`. Search for it before asking the user:
 
-1. **Project name** — must match an existing project page `<vault>/PROJECTS/<name>.md`, and is
-   the `[[name]]` wikilink used in each task's `projects:` field.
-2. **Vault root** — the absolute path to the Obsidian vault on this machine. Ask the user for it;
-   there is no default. If a sibling repo already has `.agents/tools/obsidian-tasks.md`, its
-   "Machine configuration" table holds the value to reuse.
+```sh
+find ~ -maxdepth 6 -type d -path '*/.obsidian/plugins/tasknotes' 2>/dev/null
+```
+
+The vault root is the match with `/.obsidian/plugins/tasknotes` stripped off the end.
+
+- One match → propose it and ask the user to confirm.
+- Several → list them and let the user pick.
+- None → raise `-maxdepth` or search other roots (e.g. `/mnt`, `/media`); only if that also finds
+  nothing, ask the user for the absolute path.
+
+Shortcut: if a sibling repo already has `.agents/tools/obsidian-tasks.md`, its "Machine
+configuration" table already holds the vault root — reuse it instead of searching.
+
+## Step 1b — Project name
+
+Ask for the **project name** — it must match an existing project page `<vault>/PROJECTS/<name>.md`,
+and is the `[[name]]` wikilink used in each task's `projects:` field.
 
 ## Step 2 — Verify prerequisites (do not skip)
 

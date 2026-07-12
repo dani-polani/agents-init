@@ -73,3 +73,11 @@ Below the frontmatter, add or update a brief summary of what was done — decisi
 ### 5. Update the project Changelog
 
 Read the project page at `<vault>/PROJECTS/<project>.md` (both resolved in step 0). Add a one-line entry under today's date in `## Changelog`, most recent first. Focus on user-visible outcome, not implementation details.
+
+### 6. Tag the PR with the Linear issue
+
+If you open a PR for this task, read `linear-issue` from the task frontmatter, take the identifier
+after `/issue/` in the URL (e.g. `BLD-67`), and put it in the PR title (in parentheses at the end)
+and once in the body. Linear links the PR to the issue and syncs the rest on its own. If the task
+has no `linear-issue`, open the PR normally. See the Linear section in
+`.agents/tools/obsidian-tasks.md` for details.
