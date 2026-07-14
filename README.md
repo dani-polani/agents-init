@@ -23,6 +23,7 @@ The `skills/` directory holds reusable [Agent Skills](https://skills.sh) shared 
 - `herdr-orchestrate` — orchestrate a fleet of coding subagents inside [herdr](https://herdr.dev): pick agents by usage, give each a worktree/pane, launch them so herdr sees their state (no false idle), supervise, review, and deliver deployable PRs.
 - `init-obsidian-tasks` — set up the Obsidian (TaskNotes) task-management workflow in a repo: create `.agents/tools/obsidian-tasks.md` and the `## Tasks` section of `PROJECT.md`, wired to an existing vault and project page. Vault root and project name are runtime inputs, not baked into the skill.
 - `obsidian-task-done` — close out a task once work is finished: move it to `review`, append a time entry, write a body summary, and add a Changelog line on the project page. Resolves the vault and project from the files `init-obsidian-tasks` created, so it stays machine-agnostic.
+- `set-tools-color-schemes` — methodology to sync Ghostty / herdr / yazi / micro to a VS Code or Cursor theme via **per-tool** configs (not “inherit terminal”): shared palette, semantic ANSI, hex chrome, and micro’s `MICRO_TRUECOLOR` requirement.
 
 Install all skills from this repo globally (available in every project):
 
