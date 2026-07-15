@@ -28,7 +28,7 @@ The most common failure is launching a subagent in a way that burns tokens while
 
 So, **always**:
 
-- Launch every subagent in its **interactive TUI**, as the pane's **foreground process**, via `herdr agent start` (this registers it as an agent *target* herdr tracks by name). Then put the pane in the right place with `herdr pane move` — see the fixed layout in Phase 4. Never let a subagent split your orchestrator pane, and never give it its own workspace.
+- Launch every subagent in its **interactive TUI**, as the pane's **foreground process**, via `herdr agent start` (this registers it as an agent *target* herdr tracks by name). Then move the pane into the shared **work tab** with `herdr pane move` — see the fixed layout in Phase 4. Keep your orchestrator pane alone in its own tab, and never give a subagent its own workspace.
 - **Never** launch subagents in print/headless/one-shot mode: no `claude -p`, no `codex exec`, no `cursor-agent -p`, no `omp -p`. Those produce no TUI → false idle.
 - **Never** background it (`&`, `nohup`), wrap it in an extra subshell, or redirect its output to a file/pipe. All of these hide the TUI from herdr.
 - Give the task as a **positional prompt** (interactive seed) or via `herdr agent send` *after* the TUI is ready — not through headless flags.
@@ -116,7 +116,7 @@ cd /path/to/repo
 git worktree add ../repo.feat-auth -b feat/auth        # new branch off HEAD
 ```
 
-Subagents do **not** get their own herdr **workspace** — a workspace represents a *project*, not an agent. Keep every subagent as a **pane in your current workspace and main tab**; its per-worktree state still rolls up correctly because herdr reads it from the pane and its cwd. Exactly where each pane goes is fixed in Phase 4 → "Pane layout".
+Subagents do **not** get their own herdr **workspace** — a workspace represents a *project*, not an agent. Keep every subagent as a **pane in a dedicated `work` tab inside your current workspace** (never in the orchestrator's own tab); its per-worktree state still rolls up correctly because herdr reads it from the pane and its cwd. Exactly where each pane goes is fixed in Phase 4 → "Pane layout".
 
 Note: `cursor-agent` has native `-w/--worktree`, but prefer explicit `git worktree` so the flow is uniform across agents and you control branch names.
 
@@ -128,19 +128,27 @@ Per subagent: (1) write its brief to a file in its worktree, (2) `herdr agent st
 
 ### Pane layout — where agents go (fixed rules)
 
-Agents must land in a **predictable** place. Follow this exactly; do not improvise splits, and do not create workspaces or tabs for agents.
+Agents must land in a **predictable** place. Follow this exactly; do not improvise splits, and do not create workspaces for agents.
 
-- **Stay in your current workspace and main tab.** Never `herdr workspace create` for an agent (workspaces = projects), and don't spread agents across tabs by default.
-- **Your orchestrator pane is the left column: ~half width, full height. Never split it again.** The human talks to you and needs it readable.
-- **All agents live in the right column.** The first agent *becomes* that column; the rest fill it top → bottom.
-- **Fixed fill order:** up to **3 stacked rows** first (top, middle, bottom). Only if you need a 4th–6th agent, split each row into **2 columns** (left, then right). That is the cap: **6 agent panes**. Prefer finishing or recycling an agent over exceeding it.
-- **More than 6 at once** (rare for a small team): open **one new tab in the same workspace** for the overflow grid — you stay in the main tab. Still never a new workspace.
+- **Your orchestrator pane stays alone in its own tab (the main tab), full screen. Never split it.** The human talks to you there and needs it readable.
+- **All subagents live in a separate tab named `work`, in the same workspace.** Never `herdr workspace create` for an agent (workspaces = projects), and never put an agent in the orchestrator's tab.
+- **The `work` tab is always a 2×2 grid — 4 agent panes, no more.** Same shape every time, filled in a fixed order (top-left → top-right → bottom-left → bottom-right):
 
-You build this with `herdr agent start` (keeps naming + tracking + integration state) and then `herdr pane move --target-pane` (drops the pane into the exact slot). `agent start` alone would split *your* pane, so always move the pane afterwards.
+  ```
+  +-----------+-----------+
+  |  agent 1  |  agent 2  |
+  +-----------+-----------+
+  |  agent 3  |  agent 4  |
+  +-----------+-----------+
+  ```
+
+- **Need a 5th+ agent** (rare — this flow rarely does): open a **second** tab `work 2`, same 2×2 grid, then `work 3`, and so on. Never a 3×3 or an improvised split, never a new workspace. Prefer finishing or recycling an agent over opening another work tab.
+
+You build the grid with `herdr agent start` (keeps naming + tracking + integration state) followed by `herdr pane move` (drops the pane into its exact slot). `agent start` alone would split *your* pane, so you always move the pane afterwards. The **first** agent is moved into a **fresh** `work` tab with `pane move --new-tab` — that makes it the tab's only pane, with **no leftover shell**. The other three split off their neighbours to fill the grid.
 
 ### Launch recipe
 
-Write each agent's brief into its worktree, then start + move it into its slot. `$WT2`/`$WT3` are the other agents' worktrees — reuse the same `$WT` for every agent that shares one feature/worktree.
+Write each agent's brief into its worktree, then start + move it into its slot. `$WT2`/`$WT3`/`$WT4` are the other agents' worktrees — reuse the same `$WT` for every agent that shares one feature/worktree.
 
 ```bash
 WT=/path/to/repo.feat-auth
@@ -163,34 +171,42 @@ Commit your work on this branch (with the attribution trailer), print a short
 summary, then stop. Do not push or open PRs unless told — the orchestrator does that.
 EOF
 
-# --- Find your own pane + tab once; never split your pane again ---
-ORCH=$(herdr pane current | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')
-TAB=$(herdr pane current  | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["tab_id"])')
-pid(){ herdr agent get "$1" | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["pane_id"])'; }
+# --- Identify your workspace; your orchestrator pane stays whole in its own tab ---
+WS=$(herdr pane current | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["workspace_id"])')
+pid(){   herdr agent get "$1" | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["pane_id"])'; }
+tabof(){ herdr agent get "$1" | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["tab_id"])'; }
 
-# --- Row 1: first agent takes the RIGHT half (you keep the left half, full height) ---
-# Name = harness (add a task suffix only if several of the same harness). --tab keeps it
-# in the current tab/workspace; NEVER pass --workspace and NEVER --split your own pane.
-herdr agent start claude --cwd "$WT" --tab "$TAB" --no-focus -- \
+# --- Top-left: start agent 1, then MOVE it into a FRESH "work" tab (no leftover shell) ---
+# Name = harness (add a task suffix only if several of the same harness run at once).
+herdr agent start claude --cwd "$WT" --no-focus -- \
   claude --model opus --permission-mode auto \
   "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
-ROW1=$(pid claude); herdr pane move "$ROW1" --tab "$TAB" --target-pane "$ORCH" --split right --ratio 0.5 --no-focus
+TL=$(pid claude)
+herdr pane move "$TL" --new-tab --workspace "$WS" --label "work" --no-focus
+WTAB=$(tabof claude)   # the work tab's id — every other agent moves into THIS tab
 
-# --- Row 2 stacks under row 1; Row 3 under row 2 (swap the argv per agent) ---
-herdr agent start codex --cwd "$WT2" --tab "$TAB" --no-focus -- \
+# --- Top-right: split the top-left pane to the right ---
+herdr agent start codex --cwd "$WT2" --no-focus -- \
   codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review \
   "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
-ROW2=$(pid codex); herdr pane move "$ROW2" --tab "$TAB" --target-pane "$ROW1" --split down --no-focus
+TR=$(pid codex); herdr pane move "$TR" --tab "$WTAB" --target-pane "$TL" --split right --no-focus
 
-herdr agent start omp --cwd "$WT3" --tab "$TAB" --no-focus -- \
+# --- Bottom-left: split the top-left pane downward ---
+herdr agent start omp --cwd "$WT3" --no-focus -- \
   omp --approval-mode write \
   "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
-ROW3=$(pid omp); herdr pane move "$ROW3" --tab "$TAB" --target-pane "$ROW2" --split down --no-focus
+BL=$(pid omp); herdr pane move "$BL" --tab "$WTAB" --target-pane "$TL" --split down --no-focus
 
-# --- Agents 4-6 only if needed: split each row into two columns (left -> right) ---
-# herdr agent start codex-api --cwd "$WT4" --tab "$TAB" --no-focus -- codex ... ; P4=$(pid codex-api)
-# herdr pane move "$P4" --tab "$TAB" --target-pane "$ROW1" --split right --no-focus   # right of row 1
-# ...repeat with --target-pane "$ROW2" / "$ROW3" for the 5th / 6th agent.
+# --- Bottom-right: split the top-right pane downward ---
+herdr agent start cursor --cwd "$WT4" --no-focus -- \
+  cursor-agent --auto-review --model composer-2.5 \
+  "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
+BR=$(pid cursor); herdr pane move "$BR" --tab "$WTAB" --target-pane "$TR" --split down --no-focus
+
+# --- 5th+ agent only if needed: build a second "work 2" tab the SAME way ---
+# herdr agent start codex-api --cwd "$WT5" --no-focus -- codex ... ; P5=$(pid codex-api)
+# herdr pane move "$P5" --new-tab --workspace "$WS" --label "work 2" --no-focus
+# WTAB2=$(tabof codex-api)   # then fill its 2x2 grid exactly as above.
 ```
 
 Swap the argv after `--` for the chosen agent (see "Auto-mode per agent" / Quick reference). Then **verify detection**:
@@ -233,11 +249,12 @@ herdr pane read <pane> --source visible --lines 3   # look for "auto mode on"; r
 
 ```bash
 herdr pane close <old_pane>
-herdr agent start claude --cwd "$WT" --tab "$TAB" --no-focus -- \
+herdr agent start claude --cwd "$WT" --no-focus -- \
   claude --model opus --permission-mode auto \
   "Continue ./.herdr-task.md from the current unstaged changes in this worktree. You are in auto mode. Work only in this worktree. Do not discard existing edits. Finish and commit, then stop."
-# move it back into the freed slot (e.g. under ROW1): 
-herdr pane move "$(pid claude)" --tab "$TAB" --target-pane "$ROW1" --split down --no-focus
+# move it back into the freed slot by splitting a surviving grid neighbour
+# (e.g. the pane that took over the space) so the 2x2 is restored:
+herdr pane move "$(pid claude)" --tab "$WTAB" --target-pane "$TR" --split down --no-focus
 ```
 
   This restart-in-place pattern is also the general way to change an agent's mode, model, or even harness mid-task without losing uncommitted work — the worktree holds the state, so verify `git status` in the worktree looks right before and after.
@@ -324,8 +341,9 @@ Projects define how work is tracked — usually in **`AGENTS.md`** and **`PROJEC
 - Running the agent, then walking away without checking `herdr agent list` shows it `working`. **Always verify.**
 - Not installing the herdr integration → weaker/erroneous state.
 - Spawning one worktree/branch/PR per trivial slice → merge hell and PR sprawl. Isolate only where work collides.
-- Creating a herdr **workspace** (or scattering tabs) per subagent → the sidebar fills with fake "projects". Agents are **panes in your current workspace/main tab**; place them with `pane move` per the fixed layout.
-- Letting `agent start` split **your** orchestrator pane, or improvising split order → the human loses the readable half-width orchestrator pane and can't tell where the next agent appears. Keep your pane whole; fill the right column top→bottom, then 2 columns per row.
+- Creating a herdr **workspace** per subagent → the sidebar fills with fake "projects". Agents are **panes in a `work` tab in your current workspace**; place them with `pane move` per the fixed 2×2 layout.
+- Leaving an agent pane in the **orchestrator's tab**, or improvising split order → the human loses the readable full-screen orchestrator pane and can't tell where the next agent appears. Keep your pane alone in its tab; put agents in the `work` tab, filled top-left → top-right → bottom-left → bottom-right.
+- Building anything other than a **2×2 grid** in the work tab (a 3-stack, a 3×3, ad-hoc splits) → agents land in unpredictable places. Four per tab, then open `work 2`.
 - Subagents pushing branches or opening their own PRs → **you** are the sole PR author. They commit and stop.
 - Opening PRs as **drafts** → this team doesn't use them; ship them ready for review.
 - Using dangerous bypass flags (`--dangerously-skip-permissions`, `--yolo`, `--dangerously-bypass-approvals-and-sandbox`) for subagents. Small but real risk. Use the classifier modes: Claude `--permission-mode auto`, Codex `--ask-for-approval on-request` + `approvals_reviewer=auto_review`.
@@ -341,31 +359,36 @@ Projects define how work is tracked — usually in **`AGENTS.md`** and **`PROJEC
 # Agent-target name = the harness (claude / codex / omp / cursor); add a task suffix
 # only when several of the same harness run at once (codex-ui, codex-api).
 # Classifier-gated auto mode — NOT dangerous bypass (see "Auto-mode per agent").
-# Start with --tab "$TAB" --no-focus (stay in the current tab/workspace, never --workspace),
-# then `herdr pane move ... --target-pane` into its slot (see Phase 4 → Pane layout).
+# Start each agent, then `herdr pane move` it into the "work" tab's 2x2 grid.
+# First agent -> pane move --new-tab --label "work"; the rest split off neighbours.
+# NEVER --workspace, NEVER split your orchestrator pane (see Phase 4 → Pane layout).
 
 # Claude (Opus, auto mode — needs CLAUDE_CODE_ENABLE_AUTO_MODE=1 + Opus model)
-herdr agent start claude --cwd "$WT" --tab "$TAB" --no-focus -- \
+herdr agent start claude --cwd "$WT" --no-focus -- \
   claude --model opus --permission-mode auto \
   "Read ./.herdr-task.md and complete it. Stop when done."
 
 # Codex ("approve for me" / auto-review)
-herdr agent start codex --cwd "$WT" --tab "$TAB" --no-focus -- \
+herdr agent start codex --cwd "$WT" --no-focus -- \
   codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review \
   "Read ./.herdr-task.md and complete it. Stop when done."
 
 # OMP (no classifier — 'write' gates shell exec; avoid --yolo for subagents)
-herdr agent start omp --cwd "$WT" --tab "$TAB" --no-focus -- \
+herdr agent start omp --cwd "$WT" --no-focus -- \
   omp --approval-mode write "Read ./.herdr-task.md and complete it. Stop when done."
 
 # Cursor (Smart Auto classifier; Composer 2.5 for fast, well-scoped tasks)
-herdr agent start cursor --cwd "$WT" --tab "$TAB" --no-focus -- \
+herdr agent start cursor --cwd "$WT" --no-focus -- \
   cursor-agent --auto-review --model composer-2.5 \
   "Read ./.herdr-task.md and complete it. Stop when done."
 
-# Placement (after each start): first agent -> right half; then stack rows; then 2 cols/row.
-herdr pane move "$(pid claude)" --tab "$TAB" --target-pane "$ORCH"  --split right --ratio 0.5 --no-focus
-herdr pane move "$(pid codex)"  --tab "$TAB" --target-pane "$ROW1"  --split down  --no-focus
+# Placement: TL into a fresh "work" tab; TR/BL/BR split neighbours to fill the 2x2.
+WS=$(herdr pane current | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["workspace_id"])')
+TL=$(pid claude); herdr pane move "$TL" --new-tab --workspace "$WS" --label "work" --no-focus
+WTAB=$(tabof claude)
+herdr pane move "$(pid codex)"  --tab "$WTAB" --target-pane "$TL" --split right --no-focus  # top-right
+herdr pane move "$(pid omp)"    --tab "$WTAB" --target-pane "$TL" --split down  --no-focus  # bottom-left
+herdr pane move "$(pid cursor)" --tab "$WTAB" --target-pane "$(pid codex)" --split down --no-focus  # bottom-right
 ```
 
 Supervise:
