@@ -6,25 +6,28 @@ query by the Bases plugin).
 
 ## Reusing this file in another repo
 
-This file is project-agnostic — copy it verbatim into any repo's `.agents/tools/`.
+This file is generic and machine-agnostic — commit it verbatim; it is identical in every repo.
+It carries no absolute paths, so it never conflicts across machines. Two placeholders are resolved
+at read time:
 
-- **`<PROJECT>`** — the only per-project value. It is defined once in that repo's `PROJECT.md`.
+- **`<PROJECT>`** — the per-project value, defined once in that repo's committed `PROJECT.md`.
   It is the project page filename (`PROJECTS/<PROJECT>.md`) and the wikilink used in a task's
-  `projects:` field (`"[[<PROJECT>]]"`). Substitute it wherever `<PROJECT>` appears below.
-- **Machine configuration** (vault paths, see section below) is constant across all projects on
-  this machine. Change it only when moving to a different machine or vault.
+  `projects:` field (`"[[<PROJECT>]]"`).
+- **`<VAULT>`** — the vault root, plus the task/archive/project folder paths. These are
+  machine-specific and live in the sibling file `obsidian-tasks.local.md`, which is **gitignored**
+  and created per machine by `init-obsidian-tasks`. Read that file for the actual paths whenever a
+  command below uses `<VAULT>`.
+
+Substitute both wherever they appear below.
 
 ---
 
 ## Machine configuration
 
-| Location | Path |
-|---|---|
-| Vault root | `<VAULT>` |
-| Active tasks | `<VAULT>/META/planning/Tasks/` |
-| Archived tasks | `<VAULT>/META/planning/Archive/` |
-| Project pages | `<VAULT>/PROJECTS/` |
-| Plugin config | `<VAULT>/.obsidian/plugins/tasknotes/data.json` |
+Vault root and folder paths are not stored here. They live in the gitignored sibling file
+`.agents/tools/obsidian-tasks.local.md` (created by `init-obsidian-tasks`), so each machine keeps
+its own without polluting the repo. Read it to resolve `<VAULT>` and the tasks/archive/project
+folders.
 
 ---
 
@@ -205,3 +208,6 @@ If statuses, priorities, or paths change, re-read the plugin config:
 <VAULT>/.obsidian/plugins/tasknotes/data.json
 ```
 Key fields: `customStatuses[].value`, `customPriorities[].value`, `tasksFolder`, `archiveFolder`.
+
+Status and priority edits go in this file. Path changes (`tasksFolder`, `archiveFolder`, vault
+root) go in the gitignored `obsidian-tasks.local.md`, never here.

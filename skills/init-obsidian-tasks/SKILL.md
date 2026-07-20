@@ -5,11 +5,20 @@ description: Initialize the Obsidian (TaskNotes) task-management workflow in a r
 
 # Initialize Obsidian Tasks workflow
 
-Sets up the Obsidian / TaskNotes task flow in the current repository: creates
-`.agents/tools/obsidian-tasks.md` (universal reference) and the `## Tasks` section of
-`PROJECT.md` (project-specific), wired to an existing Obsidian project page.
+Sets up the Obsidian / TaskNotes task flow in the current repository. It writes three files, split
+by what is safe to commit:
+
+- **`.agents/tools/obsidian-tasks.md`** — universal workflow reference. Generic, no absolute paths;
+  committed.
+- **`PROJECT.md` → `## Tasks` section** — project-specific (holds the project name); committed.
+- **`.agents/tools/obsidian-tasks.local.md`** — machine-specific vault paths; **gitignored**, so it
+  never conflicts when the same repo is checked out on another machine.
 
 Templates live in this skill's `assets/` directory.
+
+The vault root is the only machine-specific value, so it is the only thing kept out of git. On a
+second machine the two committed files already arrive with the repo — only the local file and the
+`.gitignore` line need to be (re)created. This skill is safe to re-run for exactly that.
 
 ## Step 1 — Find the vault (don't ask for a raw path first)
 
@@ -50,20 +59,31 @@ Run these checks. If any fails, STOP and report clearly rather than creating bro
 
 ## Step 3 — Create the files
 
-1. **`.agents/tools/obsidian-tasks.md`**
-   - Copy `assets/obsidian-tasks.md`.
+1. **`.agents/tools/obsidian-tasks.md`** (committed, generic)
+   - Copy `assets/obsidian-tasks.md` **verbatim**. It carries no absolute paths — do not substitute
+     `<VAULT>` or `<PROJECT>` here; both are resolved at read time (from the local file and
+     `PROJECT.md` respectively).
+   - If it already exists (e.g. pulled in from git on another machine), leave it as is.
+
+2. **`.agents/tools/obsidian-tasks.local.md`** (gitignored, machine-specific)
+   - Copy `assets/obsidian-tasks.local.md`.
    - Replace every `<VAULT>` with the confirmed vault root.
    - If the plugin config's `tasksFolder` / `archiveFolder` differ from the template's
      `META/planning/Tasks` / `META/planning/Archive`, update those occurrences too.
-   - Leave `<PROJECT>` untouched — it is resolved per task by reading `PROJECT.md`.
+   - Always (re)write this file — it is the per-machine config.
 
-2. **`PROJECT.md`**
+3. **`.gitignore`** (committed)
+   - Ensure it ignores the local file. Add the line `.agents/tools/*.local.md` if no matching
+     pattern is already present. Create `.gitignore` if it does not exist.
+
+4. **`PROJECT.md`** (committed)
    - If it does not exist: create from `assets/PROJECT.md`, replacing `<PROJECT>` with the project name.
    - If it exists: insert or replace only its `## Tasks` section with the rendered template;
      leave all other sections untouched.
 
 ## Step 4 — Confirm
 
-Report which files were created or updated, plus the project name and vault root used. Remind the
-user the result is reusable: copying to another repo on this machine only requires changing the
-project name in `PROJECT.md`.
+Report which files were created or updated, plus the project name and vault root used. Point out the
+split: `obsidian-tasks.local.md` is gitignored (per-machine vault path), the rest is committed. On a
+new machine, re-running this skill only regenerates the local file — the committed files come from
+git.

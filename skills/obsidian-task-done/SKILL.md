@@ -13,12 +13,15 @@ Use after completing work on a task. Performs every step in the correct order.
 
 Both values come from files that `init-obsidian-tasks` created in the current repo — do not hardcode them:
 
-- **Vault root** — read `.agents/tools/obsidian-tasks.md`, "Machine configuration" table. The tasks
-  folder is `<vault>/META/planning/Tasks/` unless that file says otherwise.
+- **Vault root** — read `.agents/tools/obsidian-tasks.local.md`, "Machine configuration" table (this
+  is the gitignored, per-machine file). The tasks folder is `<vault>/META/planning/Tasks/` unless
+  that file says otherwise.
 - **Project name** — read `PROJECT.md`, the `**Project name:**` field. It is the `PROJECTS/<name>.md`
   page and the `[[<name>]]` wikilink in each task's `projects:` field.
 
-If either file is missing, STOP and tell the user to run `init-obsidian-tasks` first.
+If `obsidian-tasks.local.md` is missing (e.g. a fresh checkout on a new machine), STOP and tell the
+user to run `init-obsidian-tasks` to (re)create it. If `PROJECT.md` is missing, run
+`init-obsidian-tasks` as well.
 
 ### 1. Read the task file
 
