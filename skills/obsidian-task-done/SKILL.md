@@ -19,9 +19,10 @@ Both values come from files that `init-obsidian-tasks` created in the current re
 - **Project name** — read `PROJECT.md`, the `**Project name:**` field. It is the `PROJECTS/<name>.md`
   page and the `[[<name>]]` wikilink in each task's `projects:` field.
 
-If `obsidian-tasks.local.md` is missing (e.g. a fresh checkout on a new machine), STOP and tell the
-user to run `init-obsidian-tasks` to (re)create it. If `PROJECT.md` is missing, run
-`init-obsidian-tasks` as well.
+If `obsidian-tasks.local.md` is missing (e.g. a fresh checkout on a new machine), run
+`init-obsidian-tasks` to rebuild it, then continue — the committed files already hold the project
+name and workflow, so init only needs to find the vault. If `PROJECT.md` is missing too, the same
+run covers it.
 
 ### 1. Read the task file
 

@@ -19,6 +19,11 @@ field and the `PROJECTS/<PROJECT>.md` project page. It substitutes for `<PROJECT
 When asked to work with tasks, issues, tickets, etc., follow `.agents/tools/obsidian-tasks.md`,
 with these project-level rules on top:
 
+- **First, check the machine config exists.** If `.agents/tools/obsidian-tasks.local.md` is absent
+  (a fresh checkout on a new machine has the committed files but not the gitignored local one), run
+  `init-obsidian-tasks` to rebuild it before doing anything else. The project name and workflow are
+  already committed, so init only has to find the vault and write the local file plus the
+  `.gitignore` line.
 - Look at `planned` and `ongoing` tasks first; if both are empty, check `backlog`.
 - Unless asked directly, only work tasks whose context is `agentic` or empty.
 - After work: set status to `review` (not `done`), summarize in the task body, and add a
