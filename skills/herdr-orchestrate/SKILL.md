@@ -1,6 +1,6 @@
 ---
 name: herdr-orchestrate
-description: "Orchestrate a fleet of coding subagents inside herdr. Use when you (the main/orchestrator agent) are asked to take a task or a list of tasks, spin up several subagents (claude/codex/cursor/omp) in herdr panes, give each a worktree and a pane, keep them VISIBLE to herdr (correct state, no false idle), supervise them, review their work, and deliver 1-2 deployable PRs plus a report. Complements the base `herdr` skill (which teaches the herdr CLI itself)."
+description: "Orchestrate a fleet of coding subagents inside herdr (0.7.5+). Use when you (the main/orchestrator agent) are asked to take a task or a list of tasks, spin up several subagents (claude/codex/cursor/omp) in herdr panes, give each a worktree and a pane, keep them VISIBLE to herdr (correct state, no false idle), supervise them, review their work, and deliver 1-2 deployable PRs plus a report. Complements the base `herdr` skill (which teaches the herdr CLI itself)."
 ---
 
 # herdr-orchestrate — running a fleet of subagents
@@ -8,6 +8,8 @@ description: "Orchestrate a fleet of coding subagents inside herdr. Use when you
 You are the **orchestrator**. A human handed you one feature or a list of tasks and asked you to get it done by delegating to subagents running inside **herdr**. This skill is the workflow. The base `herdr` skill is the CLI reference — read it too if you are unsure of a `herdr` command.
 
 Before anything else, confirm `HERDR_ENV=1`. If it is not `1`, you are not inside herdr; stop and tell the human to start you inside a herdr pane (`herdr`, then run your agent in a pane). Everything below assumes you are inside herdr.
+
+This skill targets the **herdr 0.7.5+ agent CLI**. Check with `herdr --version`. Commands changed in 0.7.5: `agent start` now attaches to an **existing** pane (`--kind`/`--pane`, no `--cwd`), `agent send` became `agent prompt` (text + Enter in one call) and `agent send-keys` (keys only), and `agent wait --status` became `agent wait --until`. If the binary is older, the recipes below will fail — run `herdr update` first. The installed binary is the authority: `herdr agent` and `herdr pane` print their current command lists.
 
 Your job, end to end:
 
@@ -28,12 +30,13 @@ The most common failure is launching a subagent in a way that burns tokens while
 
 So, **always**:
 
-- Launch every subagent in its **interactive TUI**, as the pane's **foreground process**, via `herdr agent start` (this registers it as an agent *target* herdr tracks by name). Then move the pane into the shared **work tab** with `herdr pane move` — see the fixed layout in Phase 4. Keep your orchestrator pane alone in its own tab, and never give a subagent its own workspace.
+- **Build the pane first, then start the agent in it.** Since 0.7.5 `herdr agent start` never creates, splits, or moves layout — it attaches an agent to an **existing shell pane** that sits at its interactive prompt: `herdr agent start <name> --kind <kind> --pane <pane_id> [-- <native args>]`. So the order is: `herdr tab create` / `herdr pane split` (with `--cwd`) → `herdr agent start`. See the fixed layout in Phase 4. Keep your orchestrator pane alone in its own tab, and never give a subagent its own workspace.
+- `agent start` returns only after herdr has **detected the expected agent kind** in that pane and it is ready for input (30s default, `--timeout MS`, max 300000). A non-zero exit means the agent is not visible to herdr — fix the launch instead of continuing.
 - **Never** launch subagents in print/headless/one-shot mode: no `claude -p`, no `codex exec`, no `cursor-agent -p`, no `omp -p`. Those produce no TUI → false idle.
-- **Never** background it (`&`, `nohup`), wrap it in an extra subshell, or redirect its output to a file/pipe. All of these hide the TUI from herdr.
-- Give the task as a **positional prompt** (interactive seed) or via `herdr agent send` *after* the TUI is ready — not through headless flags.
+- **Never** background it (`&`, `nohup`), wrap it in an extra subshell, or redirect its output to a file/pipe. All of these hide the TUI from herdr. Don't hand-roll a launch with `pane run`/`send-text` either — `agent start` is what validates the kind and registers the name.
+- Give the task with `herdr agent prompt <name> "<text>"` once the TUI is ready (it submits text + Enter atomically and honors bracketed paste), or as a **positional prompt** in the native argv after `--`. Never through headless flags.
 - Make sure the per-agent **herdr integration** is installed (better state + session restore).
-- If a sandbox/VM wrapper hides the process, set `HERDR_AGENT=<agent>` on the launch command.
+- If a sandbox/VM wrapper hides the process, set `HERDR_AGENT=<agent>` when you create the pane (`herdr pane split … --env HERDR_AGENT=codex`). Works on Linux, macOS and Windows.
 
 If a pane shows the wrong state, run `herdr agent explain <target>` to see why.
 
@@ -56,9 +59,12 @@ Write a short brief per subtask. You will drop each brief into a file the subage
 
 ```bash
 [ "${HERDR_ENV:-}" = "1" ] || { echo "not inside herdr"; exit 1; }
+herdr --version           # 0.7.5+ for the agent CLI used here
 herdr agent list          # what's already running
 herdr integration status  # confirm integrations are installed & current
 ```
+
+herdr injects your own coordinates into the pane — use them instead of parsing them back out: `$HERDR_WORKSPACE_ID`, `$HERDR_TAB_ID`, `$HERDR_PANE_ID`. Everything else (pane and tab IDs you create) comes from the JSON that the creating command returns; never guess an ID or read it off the sidebar.
 
 Ensure integrations for the agents you'll use are present (they give herdr authoritative state and session restore):
 
@@ -116,15 +122,17 @@ cd /path/to/repo
 git worktree add ../repo.feat-auth -b feat/auth        # new branch off HEAD
 ```
 
-Subagents do **not** get their own herdr **workspace** — a workspace represents a *project*, not an agent. Keep every subagent as a **pane in a dedicated `work` tab inside your current workspace** (never in the orchestrator's own tab); its per-worktree state still rolls up correctly because herdr reads it from the pane and its cwd. Exactly where each pane goes is fixed in Phase 4 → "Pane layout".
+Subagents do **not** get their own herdr **workspace** — a workspace represents a *project*, not an agent. Keep every subagent as a **pane in a dedicated `work` tab inside your current workspace** (never in the orchestrator's own tab); its per-worktree state still rolls up correctly because herdr reads it from the pane and its cwd. Each pane gets its worktree through `--cwd` when you create it, and where each pane goes is fixed in Phase 4 → "Pane layout".
 
 Note: `cursor-agent` has native `-w/--worktree`, but prefer explicit `git worktree` so the flow is uniform across agents and you control branch names.
 
 ## Phase 4 — Launch subagents (the correct recipe)
 
-Per subagent: (1) write its brief to a file in its worktree, (2) `herdr agent start` it in interactive TUI seeded with "read the brief and do it", (3) confirm herdr sees it.
+Per subagent: (1) write its brief to a file in its worktree, (2) create the pane at that worktree, (3) `herdr agent start` the interactive TUI in that pane, (4) hand it the brief with `herdr agent prompt`, (5) confirm herdr sees it.
 
-**Name every agent target after its harness, not its task.** Use `claude`, `codex`, `cursor`, `omp` so the human can tell who is who in the sidebar without opening panes. When you run more than one of the same harness, add a short task suffix: `codex-ui`, `codex-api`, `claude-auth`. Never use cryptic task-only names like `Bld65Autofit`. Fix a bad name with `herdr agent rename <target> <name>`.
+**Name every agent target after its harness, not its task.** Use `claude`, `codex`, `cursor`, `omp` so the human can tell who is who in the sidebar without opening panes. When you run more than one of the same harness, add a short task suffix: `codex-ui`, `codex-api`, `claude-auth`. Never use cryptic task-only names like `Bld65Autofit`. Names must match `[a-z][a-z0-9_-]{0,31}` and be unique among live agents; a name follows the pane's occupant and is cleared when that agent exits or is replaced. Fix a bad name with `herdr agent rename <target> <name>`.
+
+Agent commands take **either** that name **or** the pane ID currently hosting the agent — nothing else (no terminal IDs, no bare kind labels).
 
 ### Pane layout — where agents go (fixed rules)
 
@@ -144,11 +152,11 @@ Agents must land in a **predictable** place. Follow this exactly; do not improvi
 
 - **Need a 5th+ agent** (rare — this flow rarely does): open a **second** tab `work 2`, same 2×2 grid, then `work 3`, and so on. Never a 3×3 or an improvised split, never a new workspace. Prefer finishing or recycling an agent over opening another work tab.
 
-You build the grid with `herdr agent start` (keeps naming + tracking + integration state) followed by `herdr pane move` (drops the pane into its exact slot). `agent start` alone would split *your* pane, so you always move the pane afterwards. The **first** agent is moved into a **fresh** `work` tab with `pane move --new-tab` — that makes it the tab's only pane, with **no leftover shell**. The other three split off their neighbours to fill the grid.
+You build the grid with **layout commands only**: `herdr tab create` makes the `work` tab and its single root pane (top-left, no leftover shell), and three `herdr pane split` calls fill the other slots off their neighbours. Each pane is created with `--cwd <worktree>`, so the agent lands in the right checkout. Only after the grid exists do you run `herdr agent start` into each pane — it changes no layout, so the grid stays exactly as you built it.
 
 ### Launch recipe
 
-Write each agent's brief into its worktree, then start + move it into its slot. `$WT2`/`$WT3`/`$WT4` are the other agents' worktrees — reuse the same `$WT` for every agent that shares one feature/worktree.
+Write each agent's brief into its worktree, build the grid, then start an agent in each pane. `$WT2`/`$WT3`/`$WT4` are the other agents' worktrees — reuse the same `$WT` for every agent that shares one feature/worktree.
 
 ```bash
 WT=/path/to/repo.feat-auth
@@ -171,49 +179,38 @@ Commit your work on this branch (with the attribution trailer), print a short
 summary, then stop. Do not push or open PRs unless told — the orchestrator does that.
 EOF
 
-# --- Identify your workspace; your orchestrator pane stays whole in its own tab ---
-WS=$(herdr pane current | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["workspace_id"])')
-pid(){   herdr agent get "$1" | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["pane_id"])'; }
-tabof(){ herdr agent get "$1" | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["tab_id"])'; }
+# --- Grid first. Your orchestrator pane stays whole in its own tab: never split it. ---
+# Top-left is the root pane of a FRESH "work" tab, so the tab has no leftover shell.
+TL=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$WT" --label "work" --no-focus \
+     | jq -r '.result.root_pane.pane_id')
+TR=$(herdr pane split "$TL" --direction right --cwd "$WT2" --no-focus | jq -r '.result.pane.pane_id')
+BL=$(herdr pane split "$TL" --direction down  --cwd "$WT3" --no-focus | jq -r '.result.pane.pane_id')
+BR=$(herdr pane split "$TR" --direction down  --cwd "$WT4" --no-focus | jq -r '.result.pane.pane_id')
 
-# --- Top-left: start agent 1, then MOVE it into a FRESH "work" tab (no leftover shell) ---
-# Name = harness (add a task suffix only if several of the same harness run at once).
-herdr agent start claude --cwd "$WT" --no-focus -- \
-  claude --model opus --permission-mode auto \
-  "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
-TL=$(pid claude)
-herdr pane move "$TL" --new-tab --workspace "$WS" --label "work" --no-focus
-WTAB=$(tabof claude)   # the work tab's id — every other agent moves into THIS tab
+# --- Then one agent per pane. <name> = harness, --kind = agent kind, native flags after `--`. ---
+herdr agent start claude --kind claude --pane "$TL" -- --model opus --permission-mode auto
+herdr agent start codex  --kind codex  --pane "$TR" -- \
+  --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review
+herdr agent start omp    --kind omp    --pane "$BL" -- --approval-mode write
+herdr agent start cursor --kind cursor --pane "$BR" -- --auto-review --model composer-2.5
 
-# --- Top-right: split the top-left pane to the right ---
-herdr agent start codex --cwd "$WT2" --no-focus -- \
-  codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review \
-  "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
-TR=$(pid codex); herdr pane move "$TR" --tab "$WTAB" --target-pane "$TL" --split right --no-focus
-
-# --- Bottom-left: split the top-left pane downward ---
-herdr agent start omp --cwd "$WT3" --no-focus -- \
-  omp --approval-mode write \
-  "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
-BL=$(pid omp); herdr pane move "$BL" --tab "$WTAB" --target-pane "$TL" --split down --no-focus
-
-# --- Bottom-right: split the top-right pane downward ---
-herdr agent start cursor --cwd "$WT4" --no-focus -- \
-  cursor-agent --auto-review --model composer-2.5 \
-  "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
-BR=$(pid cursor); herdr pane move "$BR" --tab "$WTAB" --target-pane "$TR" --split down --no-focus
+# --- Hand each one its brief (text + Enter in one atomic call) ---
+for a in claude codex omp cursor; do
+  herdr agent prompt "$a" "Read ./.herdr-task.md and complete it. Work only in this worktree. Stop when done."
+done
 
 # --- 5th+ agent only if needed: build a second "work 2" tab the SAME way ---
-# herdr agent start codex-api --cwd "$WT5" --no-focus -- codex ... ; P5=$(pid codex-api)
-# herdr pane move "$P5" --new-tab --workspace "$WS" --label "work 2" --no-focus
-# WTAB2=$(tabof codex-api)   # then fill its 2x2 grid exactly as above.
+# TL2=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$WT5" --label "work 2" --no-focus \
+#       | jq -r '.result.root_pane.pane_id')   # then fill its 2x2 grid exactly as above.
 ```
+
+The prompt can also ride along as a positional argument in the native argv (`… --pane "$TL" -- --model opus --permission-mode auto "Read ./.herdr-task.md …"`). Prefer the separate `agent prompt`: it submits after readiness is confirmed and reports the resulting state, so you know the turn actually started.
 
 Swap the argv after `--` for the chosen agent (see "Auto-mode per agent" / Quick reference). Then **verify detection**:
 
 ```bash
-herdr agent list                  # `claude` should appear and move to `working`
-herdr agent read claude --source recent --lines 30
+herdr agent list | jq -r '.result.agents[] | select(.name) | "\(.name) \(.agent_status) \(.pane_id)"'
+herdr agent read claude --source recent-unwrapped --lines 30
 herdr agent explain claude        # if it looks idle but shouldn't be
 ```
 
@@ -225,9 +222,11 @@ The target is "no dumb permission prompts, but never anything genuinely dangerou
 
 **Do NOT use the dangerous full-bypass flags** (`--dangerously-skip-permissions`, `--yolo`, `--dangerously-bypass-approvals-and-sandbox`) for subagents. The risk is small but real, and worktree isolation is not a reason to strip the classifier. Occasional escalation on a truly risky action is *expected and desired* — you judge it in Phase 5. What you avoid is the *timid* presets (`acceptEdits`, plain `on-request` without a reviewer) that prompt on ordinary edits/commands.
 
+The middle column shows each agent's own command line. In herdr you pass everything after the executable name as native args: `herdr agent start <name> --kind <kind> --pane <id> -- <those flags>`.
+
 | Agent | Classifier auto-mode launch | Notes |
 | --- | --- | --- |
-| Claude | `claude --model opus --permission-mode auto` | Real "auto" mode: a separate classifier reviews each action, blocks escalation/exfiltration/destructive ops, runs everything else without prompts. **Prereqs, or it silently falls back to manual:** (1) `CLAUDE_CODE_ENABLE_AUTO_MODE=1` on a signed-in Claude subscription — set it in `~/.claude/settings.json` `env` block (durable) or pass `--env CLAUDE_CODE_ENABLE_AUTO_MODE=1` to `herdr agent start`; (2) model must be Opus 4.7/4.8 (`opus`), never Sonnet 4.5 / Opus 4.5; (3) Claude Code v2.1.83+. "Auto mode unavailable" means a prereq is unmet — not transient. Docs: code.claude.com/docs/en/auto-mode-config |
+| Claude | `claude --model opus --permission-mode auto` | Real "auto" mode: a separate classifier reviews each action, blocks escalation/exfiltration/destructive ops, runs everything else without prompts. **Prereqs, or it silently falls back to manual:** (1) `CLAUDE_CODE_ENABLE_AUTO_MODE=1` on a signed-in Claude subscription — set it in `~/.claude/settings.json` `env` block (durable) or on the pane you create for it (`herdr pane split … --env CLAUDE_CODE_ENABLE_AUTO_MODE=1`, same flag on `herdr tab create`; `agent start` has no `--env`); (2) model must be Opus 4.7/4.8 (`opus`), never Sonnet 4.5 / Opus 4.5; (3) Claude Code v2.1.83+. "Auto mode unavailable" means a prereq is unmet — not transient. Docs: code.claude.com/docs/en/auto-mode-config |
 | Codex | `codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review` | This is "approve for me": a reviewer agent auto-approves low/medium-risk requests and only escalates high/critical ones. Drop `-c approvals_reviewer=auto_review` if it's already in `~/.codex/config.toml`. Network stays off in `workspace-write` unless enabled, so an install like `npm ci` will surface for approval — that escalation is correct, not a bug. Docs: learn.chatgpt.com/docs/agent-approvals-security |
 | OMP | `omp --approval-mode write` | OMP has **no command classifier** — modes are `always-ask` / `write` / `yolo` plus per-tool policy. `write` auto-approves reads+edits and prompts before shell exec (a real guardrail; expect more `blocked` on bash). `--yolo` removes all gating (small but real risk) — avoid for subagents. Because it lacks a classifier, prefer Claude/Codex for unattended work. |
 | Cursor | `cursor-agent --auto-review --model composer-2.5` | "Smart Auto": a server classifier auto-runs safe tool calls and prompts for the rest — the right mode. `--force`/`--yolo` = "Run Everything" (no classifier) — avoid. Never `-p` (headless). Best fit: fast, well-scoped technical tasks where the path is already clear, on Composer 2.5. |
@@ -239,23 +238,23 @@ If you genuinely cannot use a classifier mode and cannot isolate, drop to a guar
 - *Hot-toggle* — works only while the agent is `idle`/`working`, **not** while it sits at a prompt. Send `shift+tab` and re-read the status bar until it shows `auto mode on`:
 
 ```bash
-herdr pane send-keys <pane> shift+tab
-herdr pane read <pane> --source visible --lines 3   # look for "auto mode on"; repeat if not there yet
+herdr agent send-keys claude shift+tab
+herdr agent read claude --source visible --lines 3   # look for "auto mode on"; repeat if not there yet
 ```
 
   `shift+tab` cycles `default → acceptEdits → plan → (auto)`, so it may take a few presses, and `auto` only appears when the account meets the prereqs above. If the agent is **blocked at an approval prompt**, the keystroke only changes the prompt selection and does not change the session mode — use restart-in-place instead.
 
-- *Restart in place* (reliable, keeps the work) — closing a pane kills only the agent process, not the files on disk. Note the slot's neighbour first, relaunch in the same worktree with the right flag, then move the new pane back into that slot and tell it to continue from the uncommitted changes:
+- *Restart in place* (reliable, keeps the work) — quitting the agent kills only its process, not the files on disk. **Keep the pane**: send the agent its own quit key, wait for the shell prompt, then start the replacement in that same pane. The slot never moves, so the 2×2 stays intact:
 
 ```bash
-herdr pane close <old_pane>
-herdr agent start claude --cwd "$WT" --no-focus -- \
-  claude --model opus --permission-mode auto \
-  "Continue ./.herdr-task.md from the current unstaged changes in this worktree. You are in auto mode. Work only in this worktree. Do not discard existing edits. Finish and commit, then stop."
-# move it back into the freed slot by splitting a surviving grid neighbour
-# (e.g. the pane that took over the space) so the 2x2 is restored:
-herdr pane move "$(pid claude)" --tab "$WTAB" --target-pane "$TR" --split down --no-focus
+PANE=$(herdr agent get claude | jq -r '.result.pane.pane_id')
+herdr agent send-keys claude ctrl+c ctrl+c        # or the agent's own /exit
+herdr pane read "$PANE" --source visible --lines 5   # confirm the shell prompt is back
+herdr agent start claude --kind claude --pane "$PANE" -- --model opus --permission-mode auto
+herdr agent prompt claude "Continue ./.herdr-task.md from the current unstaged changes in this worktree. You are in auto mode. Work only in this worktree. Do not discard existing edits. Finish and commit, then stop."
 ```
+
+  If the pane is gone rather than just occupied, rebuild the slot by splitting the surviving neighbour (`herdr pane split "$TR" --direction down --cwd "$WT" --no-focus`) and start the agent in the new pane.
 
   This restart-in-place pattern is also the general way to change an agent's mode, model, or even harness mid-task without losing uncommitted work — the worktree holds the state, so verify `git status` in the worktree looks right before and after.
 
@@ -266,19 +265,23 @@ herdr pane move "$(pid claude)" --tab "$WTAB" --target-pane "$TR" --split down -
 Watch the fleet; act on state transitions. Poll `herdr agent list` (JSON) and block on specific transitions:
 
 ```bash
-herdr agent list                                   # rollup of all agents + statuses
-herdr agent wait codex-ui --status blocked --timeout 600000    # or poll in a loop
-herdr agent read codex-ui --source recent --lines 60           # see what it's doing
+herdr agent list                                            # rollup of all agents + statuses
+herdr agent wait codex-ui --until blocked --timeout 600000  # blocks until that state
+herdr agent read codex-ui --source recent-unwrapped --lines 60   # see what it's doing
 ```
+
+`agent wait` without `--until` settles on the first `idle`, `done` or `blocked` — that is the usual "tell me when this one needs me" call. `--until` is for a specific state. Without `--timeout` it waits indefinitely, so always pass one. Read transcripts with `--source recent-unwrapped` (soft wraps joined); `--source detection` shows what the state detector sees.
 
 Handle states:
 
-- **working** — leave it. Periodically read the pane to confirm real progress (not a stuck loop). If a pane is `working` in herdr but the transcript hasn't advanced in a long time, treat it as stuck: read it, nudge with `herdr agent send`, or restart the subtask.
+- **working** — leave it. Periodically read the pane to confirm real progress (not a stuck loop). If a pane is `working` in herdr but the transcript hasn't advanced in a long time, treat it as stuck: read it, nudge with `herdr agent prompt`, or restart the subtask.
 - **blocked** — read the pane and **judge**:
-  - If you can resolve it yourself (a decision within the agreed task, a clarification you already know, an obvious fix), answer it: `herdr agent send <name> "<answer>"` then `herdr pane send-keys <pane> Enter`. If a subagent keeps blocking on *routine* approvals, it was launched without full auto — relaunch it with the flags in "Auto-mode per agent".
+  - If you can resolve it yourself (a decision within the agreed task, a clarification you already know, an obvious fix), answer it with `herdr agent prompt <name> "<answer>"` — one call, no separate Enter. Approval dialogs that want a keypress take `herdr agent send-keys <name> <key>` (`esc`, `enter`, `ctrl+c`, `shift+tab`, …). If a subagent keeps blocking on *routine* approvals, it was launched without full auto — restart it with the flags in "Auto-mode per agent".
   - If it genuinely needs the **product owner / architect / admin** (scope change, product decision, credentials, destructive/irreversible action, ambiguous requirement), **escalate to the human** and wait.
-- **done** — the subagent finished. Read its full output, then move to review (Phase 6). `done` stays flagged until you view it.
-- **idle/unknown while active** — detection problem. `herdr agent explain`, then relaunch correctly.
+- **done** — the subagent finished work nobody has looked at yet. Read its full output, then move to review (Phase 6). The flag clears only when the tab is seen in the focused UI or you run `herdr agent focus <name>` — CLI reads do **not** clear it.
+- **idle/unknown while active** — detection problem. `unknown` means an agent is there but herdr can't classify it; it is not proof of completion. Run `herdr agent explain <name>`, then relaunch correctly.
+
+`agent prompt` also takes `--wait` (and `--until`) when you want the call to return only once the agent settles. If nothing changes within five seconds of submitting from a non-working state, it returns `agent_prompt_stalled` instead of hanging — that means the text never reached the TUI, so read the pane before resending.
 
 Keep the human's attention budget low: surface only real decisions, batch status into concise updates.
 
@@ -339,9 +342,12 @@ Projects define how work is tracked — usually in **`AGENTS.md`** and **`PROJEC
 - Backgrounding (`agent … &`), `nohup`, or launching inside an extra wrapper subshell — agent isn't the pane foreground. **Don't.**
 - Redirecting/piping agent output (`agent … > out.log`, `| tee`) — hides the TUI. **Don't.**
 - Running the agent, then walking away without checking `herdr agent list` shows it `working`. **Always verify.**
+- Expecting `herdr agent start` to create the pane for you (pre-0.7.5 behaviour) → it fails without `--pane`, or you improvise a `pane run` launch and lose detection. Create the pane, then start the agent in it.
+- Starting an agent in a pane that is **not** at its shell prompt (an editor, a pager, another agent) → `agent start` refuses. Free the pane first.
+- Sending a prompt as text plus a separate Enter keypress → use `herdr agent prompt`, which submits both atomically and respects bracketed paste. `agent send-keys` is for keys only.
 - Not installing the herdr integration → weaker/erroneous state.
 - Spawning one worktree/branch/PR per trivial slice → merge hell and PR sprawl. Isolate only where work collides.
-- Creating a herdr **workspace** per subagent → the sidebar fills with fake "projects". Agents are **panes in a `work` tab in your current workspace**; place them with `pane move` per the fixed 2×2 layout.
+- Creating a herdr **workspace** per subagent → the sidebar fills with fake "projects". Agents are **panes in a `work` tab in your current workspace**, built with `tab create` + `pane split` per the fixed 2×2 layout.
 - Leaving an agent pane in the **orchestrator's tab**, or improvising split order → the human loses the readable full-screen orchestrator pane and can't tell where the next agent appears. Keep your pane alone in its tab; put agents in the `work` tab, filled top-left → top-right → bottom-left → bottom-right.
 - Building anything other than a **2×2 grid** in the work tab (a 3-stack, a 3×3, ad-hoc splits) → agents land in unpredictable places. Four per tab, then open `work 2`.
 - Subagents pushing branches or opening their own PRs → **you** are the sole PR author. They commit and stop.
@@ -356,47 +362,45 @@ Projects define how work is tracked — usually in **`AGENTS.md`** and **`PROJEC
 ## Quick reference — launch commands
 
 ```bash
+# Panes first, agents second. Grid: fresh "work" tab (top-left) + three splits.
+# NEVER --new-workspace, NEVER split your orchestrator pane (see Phase 4 → Pane layout).
+TL=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$WT" --label "work" --no-focus \
+     | jq -r '.result.root_pane.pane_id')
+TR=$(herdr pane split "$TL" --direction right --cwd "$WT2" --no-focus | jq -r '.result.pane.pane_id')
+BL=$(herdr pane split "$TL" --direction down  --cwd "$WT3" --no-focus | jq -r '.result.pane.pane_id')
+BR=$(herdr pane split "$TR" --direction down  --cwd "$WT4" --no-focus | jq -r '.result.pane.pane_id')
+
 # Agent-target name = the harness (claude / codex / omp / cursor); add a task suffix
 # only when several of the same harness run at once (codex-ui, codex-api).
 # Classifier-gated auto mode — NOT dangerous bypass (see "Auto-mode per agent").
-# Start each agent, then `herdr pane move` it into the "work" tab's 2x2 grid.
-# First agent -> pane move --new-tab --label "work"; the rest split off neighbours.
-# NEVER --workspace, NEVER split your orchestrator pane (see Phase 4 → Pane layout).
 
 # Claude (Opus, auto mode — needs CLAUDE_CODE_ENABLE_AUTO_MODE=1 + Opus model)
-herdr agent start claude --cwd "$WT" --no-focus -- \
-  claude --model opus --permission-mode auto \
-  "Read ./.herdr-task.md and complete it. Stop when done."
+herdr agent start claude --kind claude --pane "$TL" -- --model opus --permission-mode auto
 
 # Codex ("approve for me" / auto-review)
-herdr agent start codex --cwd "$WT" --no-focus -- \
-  codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review \
-  "Read ./.herdr-task.md and complete it. Stop when done."
+herdr agent start codex --kind codex --pane "$TR" -- \
+  --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review
 
 # OMP (no classifier — 'write' gates shell exec; avoid --yolo for subagents)
-herdr agent start omp --cwd "$WT" --no-focus -- \
-  omp --approval-mode write "Read ./.herdr-task.md and complete it. Stop when done."
+herdr agent start omp --kind omp --pane "$BL" -- --approval-mode write
 
 # Cursor (Smart Auto classifier; Composer 2.5 for fast, well-scoped tasks)
-herdr agent start cursor --cwd "$WT" --no-focus -- \
-  cursor-agent --auto-review --model composer-2.5 \
-  "Read ./.herdr-task.md and complete it. Stop when done."
+herdr agent start cursor --kind cursor --pane "$BR" -- --auto-review --model composer-2.5
 
-# Placement: TL into a fresh "work" tab; TR/BL/BR split neighbours to fill the 2x2.
-WS=$(herdr pane current | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["pane"]["workspace_id"])')
-TL=$(pid claude); herdr pane move "$TL" --new-tab --workspace "$WS" --label "work" --no-focus
-WTAB=$(tabof claude)
-herdr pane move "$(pid codex)"  --tab "$WTAB" --target-pane "$TL" --split right --no-focus  # top-right
-herdr pane move "$(pid omp)"    --tab "$WTAB" --target-pane "$TL" --split down  --no-focus  # bottom-left
-herdr pane move "$(pid cursor)" --tab "$WTAB" --target-pane "$(pid codex)" --split down --no-focus  # bottom-right
+# Then hand out the briefs
+for a in claude codex omp cursor; do
+  herdr agent prompt "$a" "Read ./.herdr-task.md and complete it. Stop when done."
+done
 ```
 
 Supervise:
 
 ```bash
 herdr agent list
-herdr agent read <name> --source recent --lines 60
-herdr agent wait <name> --status blocked --timeout 600000
-herdr agent send <name> "<answer or follow-up>"; herdr pane send-keys <pane> Enter
-herdr agent explain <name>   # when state looks wrong
+herdr agent read <name> --source recent-unwrapped --lines 60
+herdr agent wait <name> --until blocked --timeout 600000
+herdr agent prompt <name> "<answer or follow-up>"      # text + Enter, atomic
+herdr agent send-keys <name> esc                       # keys only (esc, enter, ctrl+c, shift+tab)
+herdr agent focus <name>                               # clears a `done` flag
+herdr agent explain <name>                             # when state looks wrong
 ```
