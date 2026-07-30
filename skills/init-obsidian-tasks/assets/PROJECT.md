@@ -11,8 +11,9 @@ run `init-obsidian-tasks` to (re)create it on a new machine.
 **Project name:** `<PROJECT>`
 
 This is the only project-specific value. It is the `[[<PROJECT>]]` wikilink in a task's `projects:`
-field and the `PROJECTS/<PROJECT>.md` project page. It substitutes for `<PROJECT>` in
-`.agents/tools/obsidian-tasks.md`.
+field and the `PROJECTS/<PROJECT>.md` project page. The generic workflow file
+`.agents/tools/obsidian-tasks.md` refers to it by its own placeholder; resolve that placeholder to
+the name above.
 
 ### Task workflow
 
@@ -26,8 +27,10 @@ with these project-level rules on top:
   `.gitignore` line.
 - Look at `planned` and `ongoing` tasks first; if both are empty, check `backlog`.
 - Unless asked directly, only work tasks whose context is `agentic` or empty.
-- After work: set status to `review` (not `done`), summarize in the task body, and add a
-  Changelog entry on the project page.
+- After work: set status to `review`, leave `completedDate` empty, summarize in the task body, and
+  add a Changelog entry on the project page. Never set `done`/`closed` and never fill
+  `completedDate` without an explicit request — that hides the task from the dashboard before the
+  user has seen it.
 - Feel free to refine a task's title/description for precision (keep titles concise).
 - If asked to do something without a task, consider creating one in the relevant project and
   following this flow.

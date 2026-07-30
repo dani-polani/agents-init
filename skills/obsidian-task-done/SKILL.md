@@ -42,8 +42,15 @@ completedDate / timeEntries
 Key changes:
 - `status: review`
 - `dateModified`: current timestamp
-- `completedDate`: today's date (`YYYY-MM-DD`)
+- `completedDate`: **leave empty** — keep the key with no value (`completedDate:`)
 - Append a new entry to `timeEntries` (see YAML rules below)
+
+**Never fill `completedDate`.** A task with a completion date is treated as finished and drops off
+the dashboard, so the user never sees it in review. Only the user sets that date, when they close
+the task. If the field already has a value and the task is going to review, clear it.
+
+**Never set `status: done` or `status: closed`** unless the user explicitly asked for it in this
+conversation. The agent's terminal state is `review`; closing is the user's call.
 
 **`completedDate` must always come BEFORE `timeEntries`.** Never put root-level fields after the `timeEntries` block — some parsers treat everything after an indented list as part of it.
 

@@ -63,7 +63,8 @@ Run these checks. If any fails, STOP and report clearly rather than creating bro
    - Copy `assets/obsidian-tasks.md` **verbatim**. It carries no absolute paths — do not substitute
      `<VAULT>` or `<PROJECT>` here; both are resolved at read time (from the local file and
      `PROJECT.md` respectively).
-   - If it already exists (e.g. pulled in from git on another machine), leave it as is.
+   - If it already exists, overwrite it with the asset. The file is generic, so an older copy is
+     just a stale copy.
 
 2. **`.agents/tools/obsidian-tasks.local.md`** (gitignored, machine-specific)
    - Copy `assets/obsidian-tasks.local.md`.
@@ -80,6 +81,24 @@ Run these checks. If any fails, STOP and report clearly rather than creating bro
    - If it does not exist: create from `assets/PROJECT.md`, replacing `<PROJECT>` with the project name.
    - If it exists: insert or replace only its `## Tasks` section with the rendered template;
      leave all other sections untouched.
+
+## Updating an already initialized repo
+
+Do not re-run this skill just to pick up template changes. Both committed files are generated —
+`obsidian-tasks.md` verbatim, the `## Tasks` section of `PROJECT.md` from the same template with the
+project name substituted — so `install.sh` refreshes them:
+
+```sh
+make agentsmd    # or: curl -fsSL https://raw.githubusercontent.com/dani-polani/agents-init/main/install.sh | sh
+```
+
+It rewrites `.agents/tools/obsidian-tasks.md` and the `## Tasks` section of `PROJECT.md` whenever
+the workflow file is present, reading the project name from the existing `**Project name:**` line
+and leaving every other section of `PROJECT.md` untouched. Repos without the workflow file are not
+affected. The gitignored local file is never touched.
+
+Since the sections are regenerated, edit the templates in this skill's `assets/`, never a repo's
+copy.
 
 ## Step 4 — Confirm
 

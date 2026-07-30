@@ -10,6 +10,8 @@ curl -fsSL https://raw.githubusercontent.com/dani-polani/agents-init/main/instal
 
 The command downloads the current `AGENTS.md`, `CLAUDE.md` and `COPYRIGHT.md` from this repository and replaces files with the same names in the target repository.
 
+If the target repository already uses the Obsidian task workflow (`.agents/tools/obsidian-tasks.md` exists), the command also refreshes that file and the `## Tasks` section of `PROJECT.md` from the `init-obsidian-tasks` templates. The project name is read from the existing `**Project name:**` line, the rest of `PROJECT.md` is left alone, and the gitignored `obsidian-tasks.local.md` is never touched. Repositories without that file are unaffected.
+
 It also adds an `agentsmd` target to the target repository's `Makefile` (creating the file if needed, skipping if the target already exists). Run it to pull the latest instructions later:
 
 ```sh
