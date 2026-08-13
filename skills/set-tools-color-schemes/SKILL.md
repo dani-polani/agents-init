@@ -124,17 +124,25 @@ auto_switch = false
 [theme.custom]
 accent = "#…"
 panel_bg = "#…"
-surface = "#…"
-border = "#…"
+surface0 = "#…"
+surface1 = "#…"
+surface_dim = "#…"
+overlay0 = "#…"      # borders / dividers
+overlay1 = "#…"
 text = "#…"
-subtext = "#…"       # must remain readable on panel_bg
+subtext0 = "#…"      # must remain readable on panel_bg
 red = "#…"
 green = "#…"
 yellow = "#…"
 blue = "#…"          # true blue role, not whatever ansiBlue was
-magenta = "#…"
-cyan = "#…"
+teal = "#…"
+peach = "#…"
+mauve = "#…"
 ```
+
+These sixteen names are the whole set herdr accepts. Anything else (`surface`,
+`border`, `subtext`, `magenta`, `cyan`) is silently ignored — verify with
+`herdr config check`, which reports unknown keys by full path.
 
 Reload: `herdr server reload-config`
 

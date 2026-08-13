@@ -11,7 +11,7 @@ Reference snapshot of what is set up on the main machine. Built-in Claude Code s
 
 ## Skills from external sources
 
-- `herdr` — drive the running herdr instance from inside it: workspaces, tabs, panes, agents.
+- `herdr` — drive the running herdr instance from inside it: workspaces, tabs, panes, agents. Bundled with the binary since 0.8.0, so it stays in step with the installed version: `herdr --skill > ~/.agents/skills/herdr/SKILL.md`.
 - `improve` — read-only codebase audit that produces prioritized implementation plans for other agents.
 - `find-skills` — discover and install agent skills on request.
 - `ui-ux-pro-max` — UI/UX design intelligence: styles, palettes, font pairings, UX guidelines, chart types across 10 stacks.

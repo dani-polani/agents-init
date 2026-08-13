@@ -1,15 +1,15 @@
 ---
 name: herdr-orchestrate
-description: "Orchestrate a fleet of coding subagents inside herdr (0.7.5+). Use when you (the main/orchestrator agent) are asked to take a task or a list of tasks, spin up several subagents (claude/codex/cursor/omp) in herdr panes, give each a worktree and a pane, keep them VISIBLE to herdr (correct state, no false idle), supervise them, review their work, and deliver 1-2 deployable PRs plus a report. Complements the base `herdr` skill (which teaches the herdr CLI itself)."
+description: "Orchestrate a fleet of coding subagents inside herdr (0.8.0+). Use when you (the main/orchestrator agent) are asked to take a task or a list of tasks, spin up several subagents (claude/codex/cursor/omp) in herdr panes, give each a worktree and a pane, keep them VISIBLE to herdr (correct state, no false idle), supervise them, review their work, and deliver 1-2 deployable PRs plus a report. Complements the base `herdr` skill (which teaches the herdr CLI itself)."
 ---
 
 # herdr-orchestrate — running a fleet of subagents
 
-You are the **orchestrator**. A human handed you one feature or a list of tasks and asked you to get it done by delegating to subagents running inside **herdr**. This skill is the workflow. The base `herdr` skill is the CLI reference — read it too if you are unsure of a `herdr` command.
+You are the **orchestrator**. A human handed you one feature or a list of tasks and asked you to get it done by delegating to subagents running inside **herdr**. This skill is the workflow. For the CLI itself, `herdr --skill` prints the reference bundled with the installed binary — read that when you are unsure of a command, and prefer it over any separately installed copy of the base `herdr` skill.
 
 Before anything else, confirm `HERDR_ENV=1`. If it is not `1`, you are not inside herdr; stop and tell the human to start you inside a herdr pane (`herdr`, then run your agent in a pane). Everything below assumes you are inside herdr.
 
-This skill targets the **herdr 0.7.5+ agent CLI**. Check with `herdr --version`. Commands changed in 0.7.5: `agent start` now attaches to an **existing** pane (`--kind`/`--pane`, no `--cwd`), `agent send` became `agent prompt` (text + Enter in one call) and `agent send-keys` (keys only), and `agent wait --status` became `agent wait --until`. If the binary is older, the recipes below will fail — run `herdr update` first. The installed binary is the authority: `herdr agent` and `herdr pane` print their current command lists.
+This skill targets the **herdr 0.8.0+ agent CLI**. Check with `herdr --version`. The agent CLI shape arrived in 0.7.5 and is unchanged in 0.8.0: `agent start` attaches to an **existing** pane (`--kind`/`--pane`, no `--cwd`), `agent prompt` submits text + Enter in one call while `agent send-keys` sends keys only, and `agent wait` takes `--until` (there is no `--status`, and no top-level `agent send`). On a pre-0.7.5 binary the recipes below fail — run `herdr update` first. The installed binary is the authority: `herdr --skill`, `herdr agent` and `herdr pane` print the current surface.
 
 Your job, end to end:
 
@@ -59,7 +59,7 @@ Write a short brief per subtask. You will drop each brief into a file the subage
 
 ```bash
 [ "${HERDR_ENV:-}" = "1" ] || { echo "not inside herdr"; exit 1; }
-herdr --version           # 0.7.5+ for the agent CLI used here
+herdr --version           # 0.8.0+; 0.7.5 is the floor for the agent CLI used here
 herdr agent list          # what's already running
 herdr integration status  # confirm integrations are installed & current
 ```
@@ -74,7 +74,7 @@ herdr integration install claude   # codex / cursor / omp as needed
 
 `omp` and `pi`-family agents report lifecycle state via hooks (most reliable). `claude`, `codex`, `cursor` are detected from their screen TUI + provide session identity — which is exactly why they must run in interactive TUI mode.
 
-If you will use **Claude in auto mode**, verify its prereqs now (otherwise it silently runs in manual and blocks on everything): `CLAUDE_CODE_ENABLE_AUTO_MODE=1` present in `~/.claude/settings.json` `env` block, model is Opus 4.7/4.8, and Claude Code is v2.1.83+. For **Codex**, confirm `approvals_reviewer = "auto_review"` is in `~/.codex/config.toml` (or pass it per-launch). See "Auto-mode per agent".
+If you will use **Claude in auto mode**, verify its prereqs now (otherwise it silently runs in manual and blocks on everything): `CLAUDE_CODE_ENABLE_AUTO_MODE=1` present in `~/.claude/settings.json` `env` block, model is a recent Opus (4.7 or newer, including Opus 5), and Claude Code is v2.1.83+. For **Codex**, confirm `approvals_reviewer = "auto_review"` is in `~/.codex/config.toml` (or pass it per-launch). See "Auto-mode per agent".
 
 ## Phase 2 — Pick agents (usage-aware)
 
@@ -125,6 +125,8 @@ git worktree add ../repo.feat-auth -b feat/auth        # new branch off HEAD
 Subagents do **not** get their own herdr **workspace** — a workspace represents a *project*, not an agent. Keep every subagent as a **pane in a dedicated `work` tab inside your current workspace** (never in the orchestrator's own tab); its per-worktree state still rolls up correctly because herdr reads it from the pane and its cwd. Each pane gets its worktree through `--cwd` when you create it, and where each pane goes is fixed in Phase 4 → "Pane layout".
 
 Note: `cursor-agent` has native `-w/--worktree`, but prefer explicit `git worktree` so the flow is uniform across agents and you control branch names.
+
+herdr also has its own `herdr worktree create|open|list|remove`, but it creates a worktree-backed **workspace** and groups it in the sidebar under the parent project. That is a project-level tool for the human, not a per-agent one — using it here would give every subagent a workspace, which this flow forbids. Stick to `git worktree add` plus `--cwd` on the pane.
 
 ## Phase 4 — Launch subagents (the correct recipe)
 
@@ -226,7 +228,7 @@ The middle column shows each agent's own command line. In herdr you pass everyth
 
 | Agent | Classifier auto-mode launch | Notes |
 | --- | --- | --- |
-| Claude | `claude --model opus --permission-mode auto` | Real "auto" mode: a separate classifier reviews each action, blocks escalation/exfiltration/destructive ops, runs everything else without prompts. **Prereqs, or it silently falls back to manual:** (1) `CLAUDE_CODE_ENABLE_AUTO_MODE=1` on a signed-in Claude subscription — set it in `~/.claude/settings.json` `env` block (durable) or on the pane you create for it (`herdr pane split … --env CLAUDE_CODE_ENABLE_AUTO_MODE=1`, same flag on `herdr tab create`; `agent start` has no `--env`); (2) model must be Opus 4.7/4.8 (`opus`), never Sonnet 4.5 / Opus 4.5; (3) Claude Code v2.1.83+. "Auto mode unavailable" means a prereq is unmet — not transient. Docs: code.claude.com/docs/en/auto-mode-config |
+| Claude | `claude --model opus --permission-mode auto` | Real "auto" mode: a separate classifier reviews each action, blocks escalation/exfiltration/destructive ops, runs everything else without prompts. **Prereqs, or it silently falls back to manual:** (1) `CLAUDE_CODE_ENABLE_AUTO_MODE=1` on a signed-in Claude subscription — set it in `~/.claude/settings.json` `env` block (durable) or on the pane you create for it (`herdr pane split … --env CLAUDE_CODE_ENABLE_AUTO_MODE=1`, same flag on `herdr tab create`; `agent start` has no `--env`); (2) model must be a recent Opus (`opus` — 4.7 or newer, Opus 5 included), never Sonnet 4.5 / Opus 4.5; (3) Claude Code v2.1.83+. "Auto mode unavailable" means a prereq is unmet — not transient. Docs: code.claude.com/docs/en/auto-mode-config |
 | Codex | `codex --sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer=auto_review` | This is "approve for me": a reviewer agent auto-approves low/medium-risk requests and only escalates high/critical ones. Drop `-c approvals_reviewer=auto_review` if it's already in `~/.codex/config.toml`. Network stays off in `workspace-write` unless enabled, so an install like `npm ci` will surface for approval — that escalation is correct, not a bug. Docs: learn.chatgpt.com/docs/agent-approvals-security |
 | OMP | `omp --approval-mode write` | OMP has **no command classifier** — modes are `always-ask` / `write` / `yolo` plus per-tool policy. `write` auto-approves reads+edits and prompts before shell exec (a real guardrail; expect more `blocked` on bash). `--yolo` removes all gating (small but real risk) — avoid for subagents. Because it lacks a classifier, prefer Claude/Codex for unattended work. |
 | Cursor | `cursor-agent --auto-review --model composer-2.5` | "Smart Auto": a server classifier auto-runs safe tool calls and prompts for the rest — the right mode. `--force`/`--yolo` = "Run Everything" (no classifier) — avoid. Never `-p` (headless). Best fit: fast, well-scoped technical tasks where the path is already clear, on Composer 2.5. |
@@ -272,6 +274,8 @@ herdr agent read codex-ui --source recent-unwrapped --lines 60   # see what it's
 
 `agent wait` without `--until` settles on the first `idle`, `done` or `blocked` — that is the usual "tell me when this one needs me" call. `--until` is for a specific state. Without `--timeout` it waits indefinitely, so always pass one. Read transcripts with `--source recent-unwrapped` (soft wraps joined); `--source detection` shows what the state detector sees.
 
+Read responses carry `truncated: true` when older rows were dropped — check it before concluding you have the agent's whole answer, and raise `--lines`. If a bigger `--lines` reveals nothing more, the agent is on the terminal's alternate screen and those rows are gone for good; ask it to write its full answer to a file and read the file instead.
+
 Handle states:
 
 - **working** — leave it. Periodically read the pane to confirm real progress (not a stuck loop). If a pane is `working` in herdr but the transcript hasn't advanced in a long time, treat it as stuck: read it, nudge with `herdr agent prompt`, or restart the subtask.
@@ -290,7 +294,7 @@ Keep the human's attention budget low: surface only real decisions, batch status
 Once subtasks are done:
 
 1. **Review** each branch's diff yourself (you're the reviewer). Look for correctness, missing tests, security issues, and whether it actually meets acceptance criteria. Prefer running the tests / a smoke check to confirm the feature works, especially if the subagent didn't make that obvious.
-2. **Bounce back** serious problems: send the subagent a focused fix task (`herdr agent send`), or spawn a fresh fixer subagent for that specific issue (Phase 4). Don't accumulate tiny throwaway branches — reuse the existing branch/worktree when reasonable.
+2. **Bounce back** serious problems: send the subagent a focused fix task (`herdr agent prompt`), or spawn a fresh fixer subagent for that specific issue (Phase 4). Don't accumulate tiny throwaway branches — reuse the existing branch/worktree when reasonable.
 3. **Consolidate** into a small number of **deployable** PRs. A PR = one thing you can deploy as a whole. Merge sibling branches of one feature together, **resolve conflicts yourself**, and open 1-2 big PRs rather than many fragments — unless splitting is genuinely necessary for deploy independence.
 4. **Open the PRs yourself, ready for review — never draft.** You are the **sole PR author**: subagents commit to their branches and stop; they do not push or open PRs. Drafts just add friction for this team, so create every PR in the normal ready state (`gh pr create` without `--draft`).
 5. **Deliver**: the outcome is one or a few PRs + your review notes + a short report (what each agent did, what you changed, what's tested, any follow-ups or escalations). Add `Co-authored-by:` trailers for every contributing subagent (see "Attribution"), and **update the project's task management** — statuses, work summaries, and PR links — per `AGENTS.md`/`PROJECT.md`.
@@ -363,7 +367,7 @@ Projects define how work is tracked — usually in **`AGENTS.md`** and **`PROJEC
 
 ```bash
 # Panes first, agents second. Grid: fresh "work" tab (top-left) + three splits.
-# NEVER --new-workspace, NEVER split your orchestrator pane (see Phase 4 → Pane layout).
+# NEVER a workspace per agent, NEVER split your orchestrator pane (see Phase 4 → Pane layout).
 TL=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$WT" --label "work" --no-focus \
      | jq -r '.result.root_pane.pane_id')
 TR=$(herdr pane split "$TL" --direction right --cwd "$WT2" --no-focus | jq -r '.result.pane.pane_id')

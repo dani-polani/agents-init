@@ -67,10 +67,15 @@ Light bases include `one-light`, `catppuccin-latte`, `solarized-light`, `rose-pi
 `catppuccin`, `tokyo-night`, etc. Prefer **base + `[theme.custom]`** over `terminal` when
 the goal is matching an editor.
 
-Common custom tokens: `accent`, `panel_bg`, `surface`, `border`, `text`, `subtext`,
-`red`, `green`, `yellow`, `blue`, `magenta`, `cyan`.
+`[theme.custom]` accepts exactly these tokens: `accent`, `panel_bg`, `surface0`,
+`surface1`, `surface_dim`, `overlay0`, `overlay1`, `text`, `subtext0`, `mauve`,
+`green`, `yellow`, `red`, `blue`, `teal`, `peach`. Values take hex (`#rrggbb`,
+`#rgb`), named colors, `rgb(r,g,b)`, or `reset`.
 
-`subtext` must pass a contrast check on `panel_bg` (sidebar labels).
+Any other key is dropped without an error at runtime. Run `herdr config check`
+after editing; it names unknown keys by full path.
+
+`subtext0` must pass a contrast check on `panel_bg` (sidebar labels).
 
 ## micro color-link notes
 
