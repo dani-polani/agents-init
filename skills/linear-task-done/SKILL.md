@@ -116,7 +116,7 @@ the comment only:
 
 ```bash
 ORCA linear create --title "<title>" --parent <ID> --team <TEAM> --project <PROJECT_ID> \
-  --workspace <WORKSPACE> --label <PROJECT_LABEL> --body-file - --json <<'EOF' \
+  --assignee me --workspace <WORKSPACE> --label <PROJECT_LABEL> --body-file - --json <<'EOF' \
   | jq -r '.result.issue.identifier'
 <repro, expected, actual, relevant files>
 EOF
