@@ -34,30 +34,51 @@ mv "$temporary_directory/COPYRIGHT.md" ./COPYRIGHT.md
 
 echo "Updated AGENTS.md, CLAUDE.md and COPYRIGHT.md in $(pwd)."
 
+linear_workflow_file=".agents/tools/linear-tasks.md"
 obsidian_workflow_file=".agents/tools/obsidian-tasks.md"
 
-update_project_tasks_section() {
-  project_name=$(sed -n 's/^\*\*Project name:\*\* `\(.*\)`$/\1/p' PROJECT.md | head -n 1)
+project_name=""
+project_id=""
+project_label=""
+team_key=""
+workspace_id=""
 
-  if [ -z "$project_name" ]; then
-    echo "Error: PROJECT.md has a '## Tasks' section but no '**Project name:**' line. Run the init-obsidian-tasks skill." >&2
+read_project_field() {
+  sed -n "s/^\*\*$1:\*\* \`\(.*\)\`\$/\1/p" PROJECT.md | head -n 1
+}
+
+require_project_field() {
+  value=$(read_project_field "$1")
+
+  if [ -z "$value" ]; then
+    echo "Error: PROJECT.md has a '## Tasks' section but no '**$1:**' line. Run the $2 skill." >&2
     exit 1
   fi
 
-  download skills/init-obsidian-tasks/assets/PROJECT.md
+  printf '%s' "$value"
+}
 
-  awk -v name="$project_name" '
-    function render(line,   out, position) {
+render_tasks_section() {
+  awk -v name="$project_name" -v identifier="$project_id" -v label="$project_label" -v team="$team_key" -v workspace="$workspace_id" '
+    function replace(line, from, to,   out, position) {
       out = ""
-      while ((position = index(line, "<PROJECT>")) > 0) {
-        out = out substr(line, 1, position - 1) name
-        line = substr(line, position + length("<PROJECT>"))
+      while ((position = index(line, from)) > 0) {
+        out = out substr(line, 1, position - 1) to
+        line = substr(line, position + length(from))
       }
       return out line
     }
+    function render(line) {
+      line = replace(line, "<PROJECT_ID>", identifier)
+      line = replace(line, "<PROJECT_LABEL>", label)
+      line = replace(line, "<WORKSPACE>", workspace)
+      line = replace(line, "<TEAM>", team)
+      line = replace(line, "<PROJECT>", name)
+      return line
+    }
     /^## Tasks$/ { in_section = 1 }
     in_section { print render($0) }
-  ' "$temporary_directory/PROJECT.md" > "$temporary_directory/tasks-section"
+  ' "$1" > "$temporary_directory/tasks-section"
 
   : > "$temporary_directory/before-tasks"
   : > "$temporary_directory/after-tasks"
@@ -79,16 +100,43 @@ update_project_tasks_section() {
   } > "$temporary_directory/rendered-project"
 
   mv "$temporary_directory/rendered-project" ./PROJECT.md
-  echo "Updated the '## Tasks' section of PROJECT.md (project name: $project_name)."
 }
 
-if [ -f "$obsidian_workflow_file" ]; then
+has_tasks_section() {
+  [ -f PROJECT.md ] && grep -q '^## Tasks$' PROJECT.md
+}
+
+if [ -f "$linear_workflow_file" ]; then
+  if [ -f "$obsidian_workflow_file" ]; then
+    echo "Warning: both linear-tasks.md and obsidian-tasks.md are present; refreshing the Linear workflow only." >&2
+  fi
+
+  download skills/init-linear-tasks/assets/linear-tasks.md
+  mv "$temporary_directory/linear-tasks.md" "$linear_workflow_file"
+  echo "Updated $linear_workflow_file."
+
+  if has_tasks_section; then
+    project_name=$(require_project_field "Linear project" init-linear-tasks)
+    project_id=$(require_project_field "Project id" init-linear-tasks)
+    project_label=$(require_project_field "Project label" init-linear-tasks)
+    team_key=$(require_project_field "Default team" init-linear-tasks)
+    workspace_id=$(require_project_field "Workspace id" init-linear-tasks)
+
+    download skills/init-linear-tasks/assets/PROJECT.md
+    render_tasks_section "$temporary_directory/PROJECT.md"
+    echo "Updated the '## Tasks' section of PROJECT.md (Linear project: $project_name)."
+  fi
+elif [ -f "$obsidian_workflow_file" ]; then
   download skills/init-obsidian-tasks/assets/obsidian-tasks.md
   mv "$temporary_directory/obsidian-tasks.md" "$obsidian_workflow_file"
   echo "Updated $obsidian_workflow_file."
 
-  if [ -f PROJECT.md ] && grep -q '^## Tasks$' PROJECT.md; then
-    update_project_tasks_section
+  if has_tasks_section; then
+    project_name=$(require_project_field "Project name" init-obsidian-tasks)
+
+    download skills/init-obsidian-tasks/assets/PROJECT.md
+    render_tasks_section "$temporary_directory/PROJECT.md"
+    echo "Updated the '## Tasks' section of PROJECT.md (project name: $project_name)."
   fi
 fi
 

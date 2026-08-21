@@ -5,8 +5,10 @@ Reference snapshot of what is set up on the main machine. Built-in Claude Code s
 ## Skills from this repository
 
 - `herdr-orchestrate` — run a fleet of coding subagents in herdr panes and worktrees, supervise them, deliver PRs.
-- `init-obsidian-tasks` — set up the Obsidian (TaskNotes) task workflow in a repo, with the vault path kept in a gitignored local file.
-- `obsidian-task-done` — close out a task: move it to review, log time, write the summary and the Changelog line.
+- `init-linear-tasks` — bind a repo to a Linear project and set up the Linear task workflow through Orca's Linear CLI.
+- `linear-task-done` — close out a Linear issue: read the linked PRs, post a completion comment, move it to In Review.
+- `init-obsidian-tasks` — superseded by `init-linear-tasks`; kept for repos still on the vault workflow.
+- `obsidian-task-done` — superseded by `linear-task-done`; kept for repos still on the vault workflow.
 - `set-tools-color-schemes` — sync Ghostty, herdr, yazi and micro to a VS Code / Cursor theme through per-tool color configs.
 
 ## Skills from external sources
@@ -35,7 +37,7 @@ Reference snapshot of what is set up on the main machine. Built-in Claude Code s
 
 ## MCP servers
 
-- `claude.ai Linear` — remote connector at `https://mcp.linear.app/mcp`, bound to the Claude account rather than to this machine.
+- `claude.ai Linear` — remote connector at `https://mcp.linear.app/mcp`, bound to the Claude account rather than to this machine. Day-to-day task work goes through Orca's `orca linear` CLI instead; the connector covers what the CLI lacks, such as creating projects.
 - `railway` — HTTP server at `https://mcp.railway.com`, scoped to a single project.
 - `word-aligner` — HTTP server at `https://aligner.tinygods.dev/mcp`, scoped to a single project.
 
