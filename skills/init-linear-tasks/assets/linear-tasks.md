@@ -108,6 +108,74 @@ assign one to yourself or to an agent account.
 ## Labels
 
 Labels exist so the human can scan and group issues; Orca's list does not group by Linear project.
+They are workspace-level here, flat and shared by every team.
+
+Two dimensions, both required:
+
+| Dimension | Values | How many |
+|---|---|---|
+| Project | `<PROJECT_LABEL>` for this repo | Exactly one, on every issue |
+| Scope | `frontend`, `backend`, `devops`, `content`, `research`, `design` | One or more |
+
+A task can be frontend and backend and devops at once; label it with all three rather than picking
+the closest one.
+
+**Use only labels that already exist.** The CLI cannot create them, and the set above is the whole
+vocabulary. Linear ships default labels such as `Bug`, `Feature` and `Improvement`; they were
+deliberately removed from this workspace. Do not use them, do not ask for them back, and do not
+invent a label of your own because one seems to fit the task.
+
+If no scope label fits, do not skip the dimension and do not improvise. Say which of the six you
+considered and why each falls short, propose a name, and ask the user to create it. Confirm the
+current vocabulary before guessing:
+
+```bash
+ORCA linear team labels --team <TEAM> --workspace <WORKSPACE> --json | jq -r '.result.labels[].name'
+```
+
+Keep the dimensions in separate labels; never fuse them into one (`cards:frontend`). Fused labels
+multiply with every new scope, and they make "all frontend work across projects" unaskable, since
+label matching is exact-name.
+
+Scope can change as work turns out to be wider or narrower than the ticket said. Adjust it
+incrementally rather than rewriting the set:
+
+```bash
+ORCA linear label add <ID> --label devops --workspace <WORKSPACE> --json | jq -r '.ok'
+ORCA linear label remove <ID> --label design --workspace <WORKSPACE> --json | jq -r '.ok'
+```
+
+`label set` replaces every label on the issue, the project one included. Use it only for deliberate
+cleanup.
+
+Filtering takes a single label per call; `--label` twice fails with `linear_network_error`. The
+project dimension has its own filter, so combine them instead:
+
+```bash
+ORCA linear list-issues --project <PROJECT_ID> --label frontend --workspace <WORKSPACE> --limit 20 --json \
+  | jq -r '.result.issues[] | "\(.identifier) [\(.state.name)] \(.title)"'
+```
+
+---
+
+## Assignee
+
+Every issue belongs to the user unless they said otherwise. Pass `--assignee me` when creating, and
+assign anything you find unassigned:
+
+```bash
+ORCA linear assignee set <ID> --me --workspace <WORKSPACE> --json | jq -r '.ok'
+```
+
+`me` resolves to the account Orca's Linear connection authenticates as, which is the user's own
+account here, not an app identity. Never reassign an issue that already has an assignee, and never
+assign one to yourself or to an agent account.
+
+---
+
+## Labels
+
+Labels exist so the human can scan and group issues; Orca's list does not group by Linear project.
 They are workspace-level here, flat and shared by every team, so one label covers both engineering
 and marketing issues.
 
@@ -203,7 +271,7 @@ Refine the title or description when it makes the task more precise. Keep titles
 
 ```bash
 ORCA linear create --title "<title>" --team <TEAM> --project <PROJECT_ID> --assignee me \
-  --workspace <WORKSPACE> --body-file - --label <PROJECT_LABEL> --label Feature --json <<'EOF' \
+  --workspace <WORKSPACE> --body-file - --label <PROJECT_LABEL> --label frontend --json <<'EOF' \
   | jq -r '.result.issue.identifier'
 <body markdown>
 EOF
@@ -211,9 +279,9 @@ EOF
 
 - `--team <TEAM>` is required: Linear cannot create an issue without one.
 - `--assignee me` unless the user named someone else.
-- Always pass `--label <PROJECT_LABEL>`. Add every applicable scope label and a type label. The
-  `create` signature marks `--label` as repeatable; if a repeated flag errors, create with the
-  project label alone and add the rest with `ORCA linear label add`.
+- Always pass `--label <PROJECT_LABEL>` plus at least one scope label. The `create` signature marks
+  `--label` as repeatable; if a repeated flag errors, create with the project label alone and add
+  the scopes with `ORCA linear label add`.
 - New issues default to the team's first state. Pass `--state Todo` when the task is ready to pick
   up, `--state Backlog` when it is not.
 - For an out-of-scope bug found while working another issue, create a parented follow-up with
